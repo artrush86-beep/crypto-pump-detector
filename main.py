@@ -211,13 +211,18 @@ class PumpDetectorApp:
             async with SignalBot(signals_api=self.signals_api) as bot:
                 await bot.start()
                 
+                # Start Telegram polling for button callbacks
+                await bot.application.start()
+                logger.info("Telegram polling started for button callbacks")
+                
                 self.running = True
                 self.start_time = datetime.utcnow()
                 
-                # Run main loops (bot + API server)
+                # Run main loops (bot + API server + Telegram polling)
                 await asyncio.gather(
                     self.run_scan_loop(bot),
                     self._status_loop(bot),
+                    bot.application.updater.start_polling(),
                     return_exceptions=True
                 )
                 
