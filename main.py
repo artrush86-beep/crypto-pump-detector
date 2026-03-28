@@ -197,11 +197,15 @@ class PumpDetectorApp:
             logger.warning(f"Signal handler setup skipped: {e}")
         
         try:
-            # Initialize
-            await self.initialize()
-            
-            # Start API server for dashboard
+            # Start API server FIRST for Railway health check
             api_runner = await self.signals_api.start()
+            logger.info("API server started - Railway health check should pass now")
+            
+            # Give Railway a moment to register the port
+            await asyncio.sleep(2)
+            
+            # Initialize market data
+            await self.initialize()
             
             # Start bot with API reference for signal tracking
             async with SignalBot(signals_api=self.signals_api) as bot:
