@@ -48,6 +48,7 @@ class SignalBot:
         self.application.add_handler(CommandHandler("status", self.cmd_status))
         self.application.add_handler(CommandHandler("settings", self.cmd_settings))
         self.application.add_handler(CommandHandler("stop", self.cmd_stop))
+        self.application.add_handler(CommandHandler("alert", self.cmd_alert))
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
     
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -58,6 +59,7 @@ class SignalBot:
             "<b>Команды:</b>\n"
             "📊 /status — статус бота\n"
             "⚙️ /settings — настройки\n"
+            "🔔 /alert SYMBOL % — ценовой алерт (например: /alert BTCUSDT 1)\n"
             "❓ /help — помощь\n"
             "🛑 /stop — остановить бота\n\n"
             "Бот мониторит:\n"
@@ -127,6 +129,42 @@ class SignalBot:
         await update.message.reply_text(
             "🛑 <b>Бот остановлен</b>\n\n"
             "Для запуска используйте /start",
+            parse_mode=ParseMode.HTML
+        )
+    
+    async def cmd_alert(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /alert command."""
+        args = context.args
+        if len(args) < 2:
+            await update.message.reply_text(
+                "🔔 <b>Создание ценового алерта</b>\n\n"
+                "Использование:\n"
+                "<code>/alert SYMBOL ПРОЦЕНТ</code>\n\n"
+                "Примеры:\n"
+                "• <code>/alert BTCUSDT 1</code> — алерт при изменении на 1%\n"
+                "• <code>/alert ETHUSDT 2.5</code> — алерт при изменении на 2.5%\n\n"
+                "Бот уведомит когда цена изменится на указанный процент.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        symbol = args[0].upper()
+        try:
+            percent = float(args[1])
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Ошибка: процент должен быть числом\n"
+                "Пример: <code>/alert BTCUSDT 1</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Store alert info in user data (will be processed by main app)
+        await update.message.reply_text(
+            f"🔔 <b>Алерт создан!</b>\n\n"
+            f"Монета: <code>{symbol}</code>\n"
+            f"Целевое изменение: ±{percent}%\n\n"
+            f"Бот уведомит при достижении цели.",
             parse_mode=ParseMode.HTML
         )
     

@@ -15,6 +15,7 @@ from src.exchanges.coingecko_client import CoinGeckoClient
 from src.detector.signal_detector import SignalDetector
 from src.bot.telegram_bot import SignalBot
 from src.api.signals_api import SignalsAPI
+from src.database.signals_db import SignalsDatabase
 
 # Configure logging
 logging.basicConfig(
@@ -52,7 +53,9 @@ class PumpDetectorApp:
         import os
         port = int(os.environ.get("PORT", 8080))
         self.signals_api = SignalsAPI(host="0.0.0.0", port=port)
-        logger.info(f"Signals API initialized on port {port}")
+        # Initialize database
+        self.db = SignalsDatabase()
+        logger.info(f"Signals API initialized on port {port}, database ready")
         
     async def initialize(self):
         """Initialize market data and symbols."""
@@ -116,14 +119,91 @@ class PumpDetectorApp:
             
             if signals:
                 logger.info(f"Detected {len(signals)} signals from {exchange_name}")
-                await bot.send_signals_batch(signals)
-                self.stats['signals_count'] += len(signals)
+                
+                # Filter signals by score (>= 3/5) and save to DB
+                filtered_signals = []
+                for signal in signals:
+                    if signal.score >= 3:  # Filter: only score >= 3
+                        filtered_signals.append(signal)
+                        # Save to database
+                        await self.db.save_signal({
+                            'symbol': signal.symbol,
+                            'exchange': signal.exchange,
+                            'signal_type': signal.signal_type,
+                            'score': signal.score,
+                            'price': 0,  # Will get from market data
+                            'price_change': signal.price_change_pct,
+                            'oi_change': signal.oi_change_pct,
+                            'volume_change': signal.volume_change_pct,
+                            'funding_rate': signal.funding_rate,
+                            'long_short_ratio': signal.long_short_ratio,
+                            'factors': signal.details.get('factors', []),
+                            'timestamp': signal.timestamp.isoformat()
+                        })
+                
+                if filtered_signals:
+                    await bot.send_signals_batch(filtered_signals)
+                    self.stats['signals_count'] += len(filtered_signals)
+                
+                # Check price alerts
+                await self._check_price_alerts(data, bot)
             
             self.stats['last_scan'] = datetime.utcnow()
             
         except Exception as e:
             logger.error(f"Error scanning {exchange_name}: {e}")
             await bot.send_error(f"{exchange_name} scan error: {str(e)[:100]}")
+    
+    async def _check_price_alerts(self, data: Dict, bot: SignalBot):
+        """Check price alerts and trigger if threshold reached."""
+        try:
+            alerts = await self.db.get_active_alerts()
+            if not alerts:
+                return
+            
+            for alert in alerts:
+                symbol = alert['symbol']
+                exchange = alert['exchange']
+                
+                # Find symbol in current data
+                market_data = data.get(symbol)
+                if not market_data:
+                    continue
+                
+                current_price = getattr(market_data, 'price', 0)
+                if not current_price:
+                    continue
+                
+                reference_price = alert['reference_price']
+                target_change = alert['target_change_pct']
+                direction = alert['direction']
+                
+                # Calculate price change
+                price_change_pct = ((current_price - reference_price) / reference_price) * 100
+                
+                # Check if alert triggered
+                triggered = False
+                if direction == 'up' and price_change_pct >= target_change:
+                    triggered = True
+                elif direction == 'down' and price_change_pct <= -target_change:
+                    triggered = True
+                
+                if triggered:
+                    # Send alert
+                    await bot.send_message(
+                        f"🔔 <b>ЦЕНОВОЙ АЛЕРТ СРАБОТАЛ!</b>\n\n"
+                        f"<b>{symbol}</b>\n"
+                        f"Цена изменилась на {price_change_pct:+.2f}%\n"
+                        f"Было: ${reference_price:.4f}\n"
+                        f"Сейчас: ${current_price:.4f}\n\n"
+                        f"Алерт удалён."
+                    )
+                    # Mark as triggered
+                    await self.db.mark_alert_triggered(alert['id'])
+                    logger.info(f"Price alert triggered: {symbol} {price_change_pct:+.2f}%")
+                    
+        except Exception as e:
+            logger.error(f"Error checking price alerts: {e}")
     
     async def run_scan_loop(self, bot: SignalBot):
         """Main scanning loop."""

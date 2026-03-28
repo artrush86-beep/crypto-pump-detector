@@ -275,9 +275,74 @@
             font-size: 48px;
             margin-bottom: 20px;
         }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: #161b22;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 1000px;
+            height: 80%;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #30363d;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            color: #8b949e;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        
+        .modal-close:hover {
+            color: #fff;
+        }
+        
+        #tradingview-widget {
+            width: 100%;
+            height: calc(100% - 60px);
+        }
+        
+        .signal-row {
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
+    <div class="modal" id="chartModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="chartTitle">Chart</h3>
+                <button class="modal-close" onclick="closeChart()">&times;</button>
+            </div>
+            <div id="tradingview-widget"></div>
+        </div>
+    </div>
     <div class="header">
         <h1>Crypto Pump Detector</h1>
         <div class="status">
@@ -460,7 +525,7 @@
                                   signal.score >= 3 ? 'score-medium' : 'score-low';
                 
                 return `
-                    <div class="signal-row">
+                    <div class="signal-row" onclick="openChart('${signal.symbol}')">
                         <div class="symbol">${signal.symbol}</div>
                         <div>
                             <span class="badge ${isPump ? 'badge-pump' : 'badge-dump'}">
@@ -483,6 +548,43 @@
             
             document.getElementById('signalsList').innerHTML = html;
         }
+        
+        function openChart(symbol) {
+            document.getElementById('chartTitle').textContent = `Chart: ${symbol}`;
+            document.getElementById('chartModal').classList.add('active');
+            
+            const widgetContainer = document.getElementById('tradingview-widget');
+            widgetContainer.innerHTML = '';
+            
+            new TradingView.widget({
+                container: 'tradingview-widget',
+                symbol: `BINANCE:${symbol}`,
+                interval: '15',
+                timezone: 'Etc/UTC',
+                theme: 'dark',
+                style: '1',
+                locale: 'en',
+                toolbar_bg: '#161b22',
+                enable_publishing: false,
+                hide_top_toolbar: false,
+                hide_legend: false,
+                save_image: false,
+                height: '100%',
+                width: '100%'
+            });
+        }
+        
+        function closeChart() {
+            document.getElementById('chartModal').classList.remove('active');
+            document.getElementById('tradingview-widget').innerHTML = '';
+        }
+        
+        // Close modal on click outside
+        document.getElementById('chartModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeChart();
+            }
+        });
         
         function formatNumber(num) {
             if (!num) return '-';
