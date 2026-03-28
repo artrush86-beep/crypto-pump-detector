@@ -33,13 +33,31 @@ class PumpDetectorApp:
     """Main application orchestrator."""
     
     def __init__(self):
-        self.detector = SignalDetector(
-            oi_threshold=settings.OI_CHANGE_THRESHOLD,
-            price_threshold=settings.PRICE_CHANGE_THRESHOLD,
-            volume_threshold=settings.VOLUME_CHANGE_THRESHOLD,
-            min_score=settings.MIN_SIGNAL_SCORE,
-            lookback_minutes=settings.LOOKBACK_WINDOW // 60
-        )
+        # Initialize detectors for multiple timeframes
+        self.detectors = {
+            "5m": SignalDetector(
+                oi_threshold=3.0,  # Lower threshold for faster timeframe
+                price_threshold=0.5,
+                volume_threshold=30.0,
+                min_score=3,
+                lookback_minutes=5
+            ),
+            "15m": SignalDetector(
+                oi_threshold=5.0,
+                price_threshold=1.0,
+                volume_threshold=50.0,
+                min_score=3,
+                lookback_minutes=15
+            ),
+            "1h": SignalDetector(
+                oi_threshold=8.0,  # Higher threshold for slower timeframe
+                price_threshold=2.0,
+                volume_threshold=80.0,
+                min_score=3,
+                lookback_minutes=60
+            )
+        }
+        self.current_timeframe = "15m"  # Default timeframe
         self.running = False
         self.start_time = None
         self.stats = {
@@ -110,43 +128,51 @@ class PumpDetectorApp:
             
             logger.info(f"Scanning {exchange_name}: {len(data)} symbols")
             
-            # Process and detect signals
-            signals = await self.detector.process_market_data(
-                exchange=exchange_name,
-                data=data,
-                market_caps=self.market_caps
-            )
+            # Process each timeframe
+            for timeframe, detector in self.detectors.items():
+                logger.info(f"Processing {timeframe} timeframe...")
+                
+                # Process and detect signals for this timeframe
+                signals = await detector.process_market_data(
+                    exchange=exchange_name,
+                    data=data,
+                    market_caps=self.market_caps
+                )
+                
+                if signals:
+                    logger.info(f"Detected {len(signals)} signals from {exchange_name} ({timeframe})")
+                    
+                    # Add timeframe to each signal
+                    for signal in signals:
+                        signal.timeframe = timeframe
+                    
+                    # Filter signals by score (>= 3/5) and save to DB
+                    filtered_signals = []
+                    for signal in signals:
+                        if signal.score >= 3:  # Filter: only score >= 3
+                            filtered_signals.append(signal)
+                            # Save to database
+                            await self.db.save_signal({
+                                'symbol': signal.symbol,
+                                'exchange': signal.exchange,
+                                'signal_type': signal.signal_type,
+                                'score': signal.score,
+                                'price': 0,
+                                'price_change': signal.price_change_pct,
+                                'oi_change': signal.oi_change_pct,
+                                'volume_change': signal.volume_change_pct,
+                                'funding_rate': signal.funding_rate,
+                                'long_short_ratio': signal.long_short_ratio,
+                                'factors': signal.details.get('factors', []),
+                                'timestamp': signal.timestamp.isoformat()
+                            })
+                    
+                    if filtered_signals:
+                        await bot.send_signals_batch(filtered_signals)
+                        self.stats['signals_count'] += len(filtered_signals)
             
-            if signals:
-                logger.info(f"Detected {len(signals)} signals from {exchange_name}")
-                
-                # Filter signals by score (>= 3/5) and save to DB
-                filtered_signals = []
-                for signal in signals:
-                    if signal.score >= 3:  # Filter: only score >= 3
-                        filtered_signals.append(signal)
-                        # Save to database
-                        await self.db.save_signal({
-                            'symbol': signal.symbol,
-                            'exchange': signal.exchange,
-                            'signal_type': signal.signal_type,
-                            'score': signal.score,
-                            'price': 0,  # Will get from market data
-                            'price_change': signal.price_change_pct,
-                            'oi_change': signal.oi_change_pct,
-                            'volume_change': signal.volume_change_pct,
-                            'funding_rate': signal.funding_rate,
-                            'long_short_ratio': signal.long_short_ratio,
-                            'factors': signal.details.get('factors', []),
-                            'timestamp': signal.timestamp.isoformat()
-                        })
-                
-                if filtered_signals:
-                    await bot.send_signals_batch(filtered_signals)
-                    self.stats['signals_count'] += len(filtered_signals)
-                
-                # Check price alerts
-                await self._check_price_alerts(data, bot)
+            # Check price alerts
+            await self._check_price_alerts(data, bot)
             
             self.stats['last_scan'] = datetime.utcnow()
             

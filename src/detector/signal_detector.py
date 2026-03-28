@@ -23,6 +23,7 @@ class SignalScore:
     long_short_ratio: float
     signal_type: str  # "PUMP" or "DUMP"
     confidence: str  # "LOW", "MEDIUM", "HIGH", "EXTREME"
+    timeframe: str = "15m"  # "5m", "15m", "1h"
     details: Dict = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.utcnow)
     
@@ -73,6 +74,7 @@ class SignalScore:
 {signal_emoji} <b>{self.signal_type} СИГНАЛ</b> {signal_emoji}
 
 <b>Монета:</b> <code>{self.symbol}</code> ({self.exchange})
+<b>Таймфрейм:</b> {self.timeframe}
 <b>Скор:</b> {self.score}/5 {emoji.get(self.confidence, '')} {self.confidence}
 
 <b>Метрики:</b>

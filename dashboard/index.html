@@ -524,6 +524,9 @@
                 const scoreClass = signal.score >= 4 ? 'score-high' : 
                                   signal.score >= 3 ? 'score-medium' : 'score-low';
                 
+                const oiChange = signal.oi_change || 0;
+                const volumeChange = signal.volume_change || 0;
+                
                 return `
                     <div class="signal-row" onclick="openChart('${signal.symbol}')">
                         <div class="symbol">${signal.symbol}</div>
@@ -534,13 +537,13 @@
                         </div>
                         <div class="score ${scoreClass}">${signal.score}/5</div>
                         <div class="price">$${formatNumber(signal.price)}</div>
-                        <div class="change ${signal.oi_change > 0 ? 'change-positive' : 'change-negative'}">
-                            ${signal.oi_change > 0 ? '+' : ''}${signal.oi_change.toFixed(1)}%
+                        <div class="change ${oiChange > 0 ? 'change-positive' : 'change-negative'}">
+                            ${oiChange > 0 ? '+' : ''}${oiChange.toFixed(1)}%
                         </div>
-                        <div class="change ${signal.volume_change > 0 ? 'change-positive' : 'change-negative'}">
-                            ${signal.volume_change > 0 ? '+' : ''}${signal.volume_change.toFixed(1)}%
+                        <div class="change ${volumeChange > 0 ? 'change-positive' : 'change-negative'}">
+                            ${volumeChange > 0 ? '+' : ''}${volumeChange.toFixed(1)}%
                         </div>
-                        <div class="exchange">${signal.exchange}</div>
+                        <div class="exchange">${signal.exchange || '-'}</div>
                         <div class="time">${formatTime(signal.timestamp)}</div>
                     </div>
                 `;
