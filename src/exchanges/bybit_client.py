@@ -83,17 +83,43 @@ class BybitClient:
         return data.get('list', [])
     
     async def get_open_interest(self, symbol: str, interval: str = "15min", limit: int = 2) -> List[Dict]:
+        # Bybit uses intervalTime parameter, not interval
+        interval_map = {
+            "5min": "5",
+            "15min": "15",
+            "30min": "30",
+            "1h": "60",
+            "4h": "240",
+            "1d": "D"
+        }
+        bybit_interval = interval_map.get(interval, "15")
+        
         data = await self._request("/v5/market/open-interest", {
-            "category": "linear", "symbol": symbol,
-            "interval": interval, "limit": limit
+            "category": "linear", 
+            "symbol": symbol,
+            "intervalTime": bybit_interval,  # Correct parameter name for Bybit V5
+            "limit": limit
         })
         return data.get('list', [])
     
     async def get_long_short_ratio(self, symbol: str, period: str = "15min") -> List[Dict]:
         try:
+            # Bybit uses periodTime parameter, not period
+            period_map = {
+                "5min": "5",
+                "15min": "15",
+                "30min": "30",
+                "1h": "60",
+                "4h": "240",
+                "1d": "D"
+            }
+            bybit_period = period_map.get(period, "15")
+            
             data = await self._request("/v5/market/account-ratio", {
-                "category": "linear", "symbol": symbol,
-                "period": period, "limit": 2
+                "category": "linear", 
+                "symbol": symbol,
+                "periodTime": bybit_period,  # Correct parameter name
+                "limit": 2
             })
             return data.get('list', [])
         except Exception as e:
