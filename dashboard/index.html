@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Pump Detector - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .header h1::before {
+            content: '🚀';
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #8b949e;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #238636;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .stat-card h3 {
+            font-size: 14px;
+            color: #8b949e;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: 600;
+        }
+        
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-btn {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .filter-btn:hover {
+            background: #30363d;
+        }
+        
+        .filter-btn.active {
+            background: #1f6feb;
+            border-color: #1f6feb;
+            color: white;
+        }
+        
+        .signals-table {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .table-header {
+            display: grid;
+            grid-template-columns: 100px 80px 80px 100px 100px 100px 80px 120px;
+            gap: 10px;
+            padding: 15px 20px;
+            background: #21262d;
+            border-bottom: 1px solid #30363d;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #8b949e;
+            letter-spacing: 0.5px;
+        }
+        
+        .signal-row {
+            display: grid;
+            grid-template-columns: 100px 80px 80px 100px 100px 100px 80px 120px;
+            gap: 10px;
+            padding: 15px 20px;
+            border-bottom: 1px solid #30363d;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        
+        .signal-row:hover {
+            background: #21262d;
+        }
+        
+        .signal-row:last-child {
+            border-bottom: none;
+        }
+        
+        .symbol {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .badge-pump {
+            background: rgba(35, 134, 54, 0.2);
+            color: #3fb950;
+        }
+        
+        .badge-dump {
+            background: rgba(248, 81, 73, 0.2);
+            color: #f85149;
+        }
+        
+        .score {
+            font-weight: 600;
+            font-size: 16px;
+        }
+        
+        .score-high { color: #3fb950; }
+        .score-medium { color: #d29922; }
+        .score-low { color: #8b949e; }
+        
+        .change {
+            font-size: 14px;
+            font-family: monospace;
+        }
+        
+        .change-positive { color: #3fb950; }
+        .change-negative { color: #f85149; }
+        
+        .price {
+            font-family: monospace;
+            font-size: 13px;
+            color: #8b949e;
+        }
+        
+        .exchange {
+            font-size: 12px;
+            color: #8b949e;
+            text-transform: uppercase;
+        }
+        
+        .time {
+            font-size: 12px;
+            color: #8b949e;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #8b949e;
+        }
+        
+        .error {
+            background: rgba(248, 81, 73, 0.1);
+            border: 1px solid #f85149;
+            color: #f85149;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .config-panel {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .config-panel input {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: #e6edf3;
+            padding: 10px 15px;
+            border-radius: 6px;
+            width: 100%;
+            max-width: 500px;
+            font-size: 14px;
+        }
+        
+        .config-panel button {
+            background: #238636;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        
+        .config-panel button:hover {
+            background: #2ea043;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #8b949e;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Crypto Pump Detector</h1>
+        <div class="status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Connecting...</span>
+            <span style="margin-left: 15px; color: #484f58;">|</span>
+            <span style="margin-left: 15px;">Auto-refresh: 30s</span>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="config-panel">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <label style="color: #8b949e; font-size: 14px;">API URL:</label>
+                <input type="text" id="apiUrl" placeholder="https://your-app.railway.app/api/signals" 
+                       value="">
+                <button onclick="saveConfig()">Connect</button>
+            </div>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Signals</h3>
+                <div class="stat-value" id="totalSignals">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Pumps</h3>
+                <div class="stat-value" id="pumpCount" style="color: #3fb950;">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Dumps</h3>
+                <div class="stat-value" id="dumpCount" style="color: #f85149;">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Last Update</h3>
+                <div class="stat-value" id="lastUpdate" style="font-size: 18px; margin-top: 8px;">-</div>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <button class="filter-btn active" onclick="filterSignals('all')">All Signals</button>
+            <button class="filter-btn" onclick="filterSignals('pump')">Pumps Only</button>
+            <button class="filter-btn" onclick="filterSignals('dump')">Dumps Only</button>
+        </div>
+        
+        <div class="signals-table">
+            <div class="table-header">
+                <div>Symbol</div>
+                <div>Type</div>
+                <div>Score</div>
+                <div>Price</div>
+                <div>OI Change</div>
+                <div>Volume</div>
+                <div>Exchange</div>
+                <div>Time</div>
+            </div>
+            <div id="signalsList">
+                <div class="loading">Enter API URL and click Connect to load signals...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFilter = 'all';
+        let signalsData = [];
+        let apiUrl = localStorage.getItem('apiUrl') || '';
+        
+        document.getElementById('apiUrl').value = apiUrl;
+        
+        if (apiUrl) {
+            fetchSignals();
+            setInterval(fetchSignals, 30000); // Auto-refresh every 30s
+        }
+        
+        function saveConfig() {
+            apiUrl = document.getElementById('apiUrl').value.trim();
+            if (!apiUrl) {
+                alert('Please enter API URL');
+                return;
+            }
+            localStorage.setItem('apiUrl', apiUrl);
+            fetchSignals();
+            setInterval(fetchSignals, 30000);
+        }
+        
+        async function fetchSignals() {
+            if (!apiUrl) return;
+            
+            try {
+                updateStatus('loading');
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                signalsData = data.signals || [];
+                
+                updateStats(data);
+                renderSignals();
+                updateStatus('connected');
+            } catch (error) {
+                console.error('Fetch error:', error);
+                updateStatus('error');
+                document.getElementById('signalsList').innerHTML = 
+                    `<div class="error">Failed to fetch signals: ${error.message}</div>`;
+            }
+        }
+        
+        function updateStatus(status) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            
+            switch(status) {
+                case 'connected':
+                    dot.style.background = '#238636';
+                    dot.style.animation = 'pulse 2s infinite';
+                    text.textContent = 'Connected';
+                    break;
+                case 'loading':
+                    dot.style.background = '#d29922';
+                    dot.style.animation = 'none';
+                    text.textContent = 'Loading...';
+                    break;
+                case 'error':
+                    dot.style.background = '#f85149';
+                    dot.style.animation = 'none';
+                    text.textContent = 'Disconnected';
+                    break;
+                default:
+                    dot.style.background = '#8b949e';
+                    text.textContent = 'Connecting...';
+            }
+        }
+        
+        function updateStats(data) {
+            document.getElementById('totalSignals').textContent = data.total || 0;
+            
+            const pumps = signalsData.filter(s => s.signal_type === 'pump').length;
+            const dumps = signalsData.filter(s => s.signal_type === 'dump').length;
+            
+            document.getElementById('pumpCount').textContent = pumps;
+            document.getElementById('dumpCount').textContent = dumps;
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+        
+        function filterSignals(type) {
+            currentFilter = type;
+            
+            // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            renderSignals();
+        }
+        
+        function renderSignals() {
+            let filtered = signalsData;
+            
+            if (currentFilter !== 'all') {
+                filtered = signalsData.filter(s => s.signal_type === currentFilter);
+            }
+            
+            if (filtered.length === 0) {
+                document.getElementById('signalsList').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <div>No ${currentFilter === 'all' ? '' : currentFilter} signals yet</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            const html = filtered.map(signal => {
+                const isPump = signal.signal_type === 'pump';
+                const scoreClass = signal.score >= 4 ? 'score-high' : 
+                                  signal.score >= 3 ? 'score-medium' : 'score-low';
+                
+                return `
+                    <div class="signal-row">
+                        <div class="symbol">${signal.symbol}</div>
+                        <div>
+                            <span class="badge ${isPump ? 'badge-pump' : 'badge-dump'}">
+                                ${signal.signal_type}
+                            </span>
+                        </div>
+                        <div class="score ${scoreClass}">${signal.score}/5</div>
+                        <div class="price">$${formatNumber(signal.price)}</div>
+                        <div class="change ${signal.oi_change > 0 ? 'change-positive' : 'change-negative'}">
+                            ${signal.oi_change > 0 ? '+' : ''}${signal.oi_change.toFixed(1)}%
+                        </div>
+                        <div class="change ${signal.volume_change > 0 ? 'change-positive' : 'change-negative'}">
+                            ${signal.volume_change > 0 ? '+' : ''}${signal.volume_change.toFixed(1)}%
+                        </div>
+                        <div class="exchange">${signal.exchange}</div>
+                        <div class="time">${formatTime(signal.timestamp)}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('signalsList').innerHTML = html;
+        }
+        
+        function formatNumber(num) {
+            if (!num) return '-';
+            if (num >= 1000) return num.toFixed(0);
+            if (num >= 1) return num.toFixed(2);
+            return num.toFixed(4);
+        }
+        
+        function formatTime(timestamp) {
+            if (!timestamp) return '-';
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: false 
+            });
+        }
+    </script>
+</body>
+</html>
