@@ -29,8 +29,8 @@ class SignalScore:
     def to_message(self) -> str:
         """Format signal as Telegram message."""
         emoji = {
-            "PUMP": "🚀",
-            "DUMP": "🔻",
+            "PUMP": "�",  # Green circle for pump
+            "DUMP": "�",  # Red circle for dump
             "LOW": "⚪",
             "MEDIUM": "🟡",
             "HIGH": "🟠",
@@ -39,32 +39,57 @@ class SignalScore:
         
         # Signal direction emoji
         direction = "📈" if self.signal_type == "PUMP" else "📉"
+        signal_emoji = emoji.get(self.signal_type, "⚪")
         
         # Funding interpretation
         funding_emoji = "🟢" if self.funding_rate < 0 else "🔴"
-        funding_text = "Shorts pay" if self.funding_rate < 0 else "Longs pay"
+        funding_text = "Шорты платят" if self.funding_rate < 0 else "Лонги платят"
+        
+        # Translate factors to Russian
+        factor_translations = {
+            "OI surge": "Всплеск OI",
+            "OI rising": "Рост OI",
+            "Price": "Цена",
+            "Volume spike": "Всплеск объёма",
+            "Negative funding": "Отрицательный фандинг",
+            "Positive funding": "Положительный фандинг",
+            "shorts pay": "шорты платят",
+            "longs pay": "лонги платят",
+            "short squeeze potential": "потенциал шорт скуиз",
+            "overcrowded longs": "перегруженные лонги",
+            "during price drop": "во время падения цены",
+            "L/S ratio": "Соотношение L/S"
+        }
+        
+        # Translate factors
+        translated_factors = []
+        for factor in self.details.get("factors", []):
+            translated = factor
+            for eng, rus in factor_translations.items():
+                translated = translated.replace(eng, rus)
+            translated_factors.append(translated)
         
         message = f"""
-{direction} <b>{self.signal_type} SIGNAL</b> {direction}
+{signal_emoji} <b>{self.signal_type} СИГНАЛ</b> {signal_emoji}
 
-<b>Symbol:</b> <code>{self.symbol}</code> ({self.exchange})
-<b>Score:</b> {self.score}/5 {emoji.get(self.confidence, '')} {self.confidence}
+<b>Монета:</b> <code>{self.symbol}</code> ({self.exchange})
+<b>Скор:</b> {self.score}/5 {emoji.get(self.confidence, '')} {self.confidence}
 
-<b>Metrics:</b>
-• OI Change: <code>{self.oi_change_pct:+.2f}%</code> {'✅' if abs(self.oi_change_pct) >= 5 else '⚠️'}
-• Price: <code>{self.price_change_pct:+.2f}%</code> {'✅' if abs(self.price_change_pct) >= 1 else '⚠️'}
-• Volume: <code>{self.volume_change_pct:+.1f}%</code> {'✅' if self.volume_change_pct >= 50 else '⚠️'}
-• Funding: <code>{self.funding_rate*100:.4f}%</code> {funding_emoji} ({funding_text})
-• L/S Ratio: <code>{self.long_short_ratio:.2f}</code> {'✅' if (self.signal_type == 'PUMP' and self.long_short_ratio < 1) or (self.signal_type == 'DUMP' and self.long_short_ratio > 2) else '⚠️'}
+<b>Метрики:</b>
+• OI: <code>{self.oi_change_pct:+.2f}%</code> {'✅' if abs(self.oi_change_pct) >= 5 else '⚠️'}
+• Цена: <code>{self.price_change_pct:+.2f}%</code> {'✅' if abs(self.price_change_pct) >= 1 else '⚠️'}
+• Объём: <code>{self.volume_change_pct:+.1f}%</code> {'✅' if self.volume_change_pct >= 50 else '⚠️'}
+• Фандинг: <code>{self.funding_rate*100:.4f}%</code> {funding_emoji} ({funding_text})
+• L/S: <code>{self.long_short_ratio:.2f}</code> {'✅' if (self.signal_type == 'PUMP' and self.long_short_ratio < 1) or (self.signal_type == 'DUMP' and self.long_short_ratio > 2) else '⚠️'}
 
-<b>Time:</b> {self.timestamp.strftime('%H:%M:%S UTC')}
+<b>Время:</b> {self.timestamp.strftime('%H:%M:%S UTC')}
 """
         
-        # Add additional details if present
-        if self.details:
-            message += f"\n<b>Details:</b>\n"
-            for key, value in self.details.items():
-                message += f"• {key}: {value}\n"
+        # Add translated details
+        if translated_factors:
+            message += f"\n<b>Факторы:</b>\n"
+            for factor in translated_factors:
+                message += f"• {factor}\n"
         
         return message
 

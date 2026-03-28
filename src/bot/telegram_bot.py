@@ -136,14 +136,14 @@ class SignalBot:
         await query.answer()
         
         if query.data == 'notif_settings':
-            await query.edit_message_text(
+            await query.message.reply_text(
                 "🔔 <b>Настройки уведомлений</b>\n\n"
                 "Пока доступен только один режим — все сигналы.\n"
                 "В будущем можно будет фильтровать по score.",
                 parse_mode=ParseMode.HTML
             )
         elif query.data == 'threshold_settings':
-            await query.edit_message_text(
+            await query.message.reply_text(
                 "📊 <b>Пороги сигналов</b>\n\n"
                 f"Текущие настройки (меняются через Railway Variables):\n"
                 f"• OI: ±{settings.OI_CHANGE_THRESHOLD}%\n"
@@ -153,7 +153,7 @@ class SignalBot:
                 parse_mode=ParseMode.HTML
             )
         elif query.data == 'silent_mode':
-            await query.edit_message_text(
+            await query.message.reply_text(
                 "🔕 <b>Тихий режим</b>\n\n"
                 "Пока недоступно.\n"
                 "В будущем можно будет отключить уведомления.",
@@ -161,15 +161,16 @@ class SignalBot:
             )
         elif query.data.startswith('chart_'):
             symbol = query.data.replace('chart_', '')
-            await query.edit_message_text(
+            await query.message.reply_text(
                 f"📈 <b>График {symbol}</b>\n\n"
-                f"TradingView: https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}\n"
-                f"CoinGlass: https://coinglass.com/tv/ru/Binance_{symbol}",
-                parse_mode=ParseMode.HTML
+                f"<a href='https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}'>TradingView</a>\n"
+                f"<a href='https://coinglass.com/tv/ru/Binance_{symbol}'>CoinGlass</a>",
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True
             )
         elif query.data.startswith('alert_'):
             symbol = query.data.replace('alert_', '')
-            await query.edit_message_text(
+            await query.message.reply_text(
                 f"🔔 <b>Алерт для {symbol}</b>\n\n"
                 f"Уведомление установлено!\n"
                 f"При сильном изменении цены пришлю сообщение.",
@@ -177,7 +178,7 @@ class SignalBot:
             )
         elif query.data.startswith('ignore_'):
             symbol = query.data.replace('ignore_', '')
-            await query.edit_message_text(
+            await query.message.reply_text(
                 f"🗑 <b>{symbol} скрыт</b>\n\n"
                 f"Эта пара больше не будет присылать сигналы.",
                 parse_mode=ParseMode.HTML
