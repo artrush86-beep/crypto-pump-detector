@@ -14,6 +14,7 @@ from src.exchanges.bybit_client import BybitClient
 from src.exchanges.coingecko_client import CoinGeckoClient
 from src.detector.signal_detector import SignalDetector
 from src.bot.telegram_bot import SignalBot
+from src.api.signals_api import SignalsAPI
 
 # Configure logging
 logging.basicConfig(
@@ -47,6 +48,11 @@ class PumpDetectorApp:
         }
         self.market_caps: Dict[str, float] = {}
         self.all_symbols: Set[str] = set()
+        # Initialize API server for dashboard (Railway provides PORT env var)
+        import os
+        port = int(os.environ.get("PORT", 8080))
+        self.signals_api = SignalsAPI(host="0.0.0.0", port=port)
+        logger.info(f"Signals API initialized on port {port}")
         
     async def initialize(self):
         """Initialize market data and symbols."""
@@ -194,14 +200,17 @@ class PumpDetectorApp:
             # Initialize
             await self.initialize()
             
-            # Start bot
-            async with SignalBot() as bot:
+            # Start API server for dashboard
+            api_runner = await self.signals_api.start()
+            
+            # Start bot with API reference for signal tracking
+            async with SignalBot(signals_api=self.signals_api) as bot:
                 await bot.start()
                 
                 self.running = True
                 self.start_time = datetime.utcnow()
                 
-                # Run main loops
+                # Run main loops (bot + API server)
                 await asyncio.gather(
                     self.run_scan_loop(bot),
                     self._status_loop(bot),
@@ -213,6 +222,9 @@ class PumpDetectorApp:
             raise
         finally:
             logger.info("Pump Detector stopped")
+            # Cleanup API server
+            if 'api_runner' in locals():
+                await api_runner.cleanup()
 
 
 async def main():

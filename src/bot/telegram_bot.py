@@ -17,12 +17,13 @@ logger = logging.getLogger(__name__)
 class SignalBot:
     """Telegram bot for crypto pump/dump signals."""
     
-    def __init__(self, token: Optional[str] = None, chat_id: Optional[str] = None, thread_id: Optional[int] = None):
+    def __init__(self, token: Optional[str] = None, chat_id: Optional[str] = None, thread_id: Optional[int] = None, signals_api=None):
         self.token = token or settings.TELEGRAM_BOT_TOKEN
         self.chat_id = chat_id or settings.TELEGRAM_CHAT_ID
         self.thread_id = thread_id or settings.TELEGRAM_THREAD_ID
         self.bot: Optional[Bot] = None
         self._startup_message_sent = False
+        self.signals_api = signals_api  # Reference to API for dashboard
     
     async def __aenter__(self):
         self.bot = Bot(token=self.token)
@@ -74,6 +75,23 @@ class SignalBot:
         message = signal.to_message()
         await self.send_message(message)
         logger.info(f"Sent signal for {signal.symbol}")
+        
+        # Add to API for dashboard
+        if self.signals_api:
+            signal_data = {
+                "symbol": signal.symbol,
+                "exchange": signal.exchange,
+                "signal_type": signal.signal_type,
+                "score": signal.score,
+                "price_change": signal.price_change,
+                "oi_change": signal.oi_change,
+                "volume_change": signal.volume_change,
+                "funding_rate": signal.funding_rate,
+                "long_short_ratio": signal.long_short_ratio,
+                "price": signal.price,
+                "market_cap": signal.market_cap
+            }
+            self.signals_api.add_signal(signal_data)
     
     async def send_signals_batch(self, signals: List[SignalScore]):
         """Send multiple signals."""
