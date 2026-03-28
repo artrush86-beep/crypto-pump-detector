@@ -49,18 +49,36 @@ class SignalsAPI:
             # Read from database
             signals = await self.db.get_recent_signals(limit=limit, signal_type=signal_type)
             
-            # Parse JSON factors
+            # Convert Row objects to dict and parse JSON factors
+            processed_signals = []
             for signal in signals:
-                if 'factors' in signal and isinstance(signal['factors'], str):
+                # Convert Row to dict if needed
+                if hasattr(signal, 'keys'):
+                    signal_dict = {key: signal[key] for key in signal.keys()}
+                else:
+                    signal_dict = dict(signal)
+                
+                # Parse JSON factors
+                if 'factors' in signal_dict and isinstance(signal_dict['factors'], str):
                     try:
-                        signal['factors'] = json.loads(signal['factors'])
+                        signal_dict['factors'] = json.loads(signal_dict['factors'])
                     except:
-                        signal['factors'] = []
+                        signal_dict['factors'] = []
+                
+                # Ensure numeric fields
+                for field in ['oi_change', 'volume_change', 'price_change', 'price', 'funding_rate', 'long_short_ratio']:
+                    if field in signal_dict:
+                        try:
+                            signal_dict[field] = float(signal_dict[field]) if signal_dict[field] else 0
+                        except:
+                            signal_dict[field] = 0
+                
+                processed_signals.append(signal_dict)
             
             return web.json_response(
                 {
-                    "signals": signals,
-                    "total": len(signals),
+                    "signals": processed_signals,
+                    "total": len(processed_signals),
                     "source": "database"
                 },
                 headers={"Access-Control-Allow-Origin": "*"}

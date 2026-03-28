@@ -503,6 +503,8 @@
         }
         
         function renderSignals() {
+            console.log('Rendering signals:', signalsData);
+            
             let filtered = signalsData;
             
             if (currentFilter !== 'all') {
@@ -519,37 +521,54 @@
                 return;
             }
             
-            const html = filtered.map(signal => {
-                const isPump = signal.signal_type === 'pump';
-                const scoreClass = signal.score >= 4 ? 'score-high' : 
-                                  signal.score >= 3 ? 'score-medium' : 'score-low';
+            try {
+                const html = filtered.map((signal, index) => {
+                    console.log(`Signal ${index}:`, signal);
+                    
+                    const isPump = signal.signal_type === 'pump';
+                    const scoreClass = signal.score >= 4 ? 'score-high' : 
+                                      signal.score >= 3 ? 'score-medium' : 'score-low';
+                    
+                    // Handle both database fields (snake_case) and API fields
+                    let oiChange = signal.oi_change || signal.oiChange || 0;
+                    let volumeChange = signal.volume_change || signal.volumeChange || 0;
+                    let price = signal.price || 0;
+                    let exchange = signal.exchange || '-';
+                    
+                    // Ensure numeric values
+                    oiChange = parseFloat(oiChange) || 0;
+                    volumeChange = parseFloat(volumeChange) || 0;
+                    price = parseFloat(price) || 0;
+                    
+                    return `
+                        <div class="signal-row" onclick="openChart('${signal.symbol}')">
+                            <div class="symbol">${signal.symbol || '?'}</div>
+                            <div>
+                                <span class="badge ${isPump ? 'badge-pump' : 'badge-dump'}">
+                                    ${signal.signal_type || '?'}
+                                </span>
+                            </div>
+                            <div class="score ${scoreClass}">${signal.score || 0}/5</div>
+                            <div class="price">$${formatNumber(price)}</div>
+                            <div class="change ${oiChange > 0 ? 'change-positive' : 'change-negative'}">
+                                ${oiChange > 0 ? '+' : ''}${oiChange.toFixed(1)}%
+                            </div>
+                            <div class="change ${volumeChange > 0 ? 'change-positive' : 'change-negative'}">
+                                ${volumeChange > 0 ? '+' : ''}${volumeChange.toFixed(1)}%
+                            </div>
+                            <div class="exchange">${exchange}</div>
+                            <div class="time">${formatTime(signal.timestamp)}</div>
+                        </div>
+                    `;
+                }).join('');
                 
-                const oiChange = signal.oi_change || 0;
-                const volumeChange = signal.volume_change || 0;
-                
-                return `
-                    <div class="signal-row" onclick="openChart('${signal.symbol}')">
-                        <div class="symbol">${signal.symbol}</div>
-                        <div>
-                            <span class="badge ${isPump ? 'badge-pump' : 'badge-dump'}">
-                                ${signal.signal_type}
-                            </span>
-                        </div>
-                        <div class="score ${scoreClass}">${signal.score}/5</div>
-                        <div class="price">$${formatNumber(signal.price)}</div>
-                        <div class="change ${oiChange > 0 ? 'change-positive' : 'change-negative'}">
-                            ${oiChange > 0 ? '+' : ''}${oiChange.toFixed(1)}%
-                        </div>
-                        <div class="change ${volumeChange > 0 ? 'change-positive' : 'change-negative'}">
-                            ${volumeChange > 0 ? '+' : ''}${volumeChange.toFixed(1)}%
-                        </div>
-                        <div class="exchange">${signal.exchange || '-'}</div>
-                        <div class="time">${formatTime(signal.timestamp)}</div>
-                    </div>
+                document.getElementById('signalsList').innerHTML = html;
+            } catch (err) {
+                console.error('Render error:', err);
+                document.getElementById('signalsList').innerHTML = `
+                    <div class="error">Render error: ${err.message}</div>
                 `;
-            }).join('');
-            
-            document.getElementById('signalsList').innerHTML = html;
+            }
         }
         
         function openChart(symbol) {
