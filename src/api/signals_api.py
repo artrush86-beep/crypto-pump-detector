@@ -7,6 +7,8 @@ from typing import List, Dict, Any
 import aiohttp
 from aiohttp import web
 
+from src.database.signals_db import SignalsDatabase
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,7 +22,10 @@ class SignalsAPI:
         self.app = web.Application()
         self.app.router.add_get("/api/signals", self.get_signals)
         self.app.router.add_get("/api/health", self.health_check)
+        self.app.router.add_get("/api/stats", self.get_stats)
         self.app.router.add_options("/api/signals", self.cors_preflight)
+        # Initialize database connection
+        self.db = SignalsDatabase()
         
     async def cors_preflight(self, request: web.Request) -> web.Response:
         """Handle CORS preflight."""
@@ -33,35 +38,72 @@ class SignalsAPI:
         )
     
     async def get_signals(self, request: web.Request) -> web.Response:
-        """Return recent signals."""
+        """Return recent signals from database."""
         # Get limit from query params
-        limit = int(request.query.get("limit", 50))
+        limit = int(request.query.get("limit", 100))
         
         # Filter by type if specified
         signal_type = request.query.get("type")  # pump, dump, or None for all
         
-        filtered_signals = self.signals
-        if signal_type:
-            filtered_signals = [
-                s for s in self.signals 
-                if s.get("signal_type") == signal_type
-            ]
-        
-        # Sort by timestamp desc and limit
-        recent = sorted(
-            filtered_signals, 
-            key=lambda x: x.get("timestamp", ""), 
-            reverse=True
-        )[:limit]
-        
-        return web.json_response(
-            {
-                "signals": recent,
-                "total": len(self.signals),
-                "filtered": len(recent)
-            },
-            headers={"Access-Control-Allow-Origin": "*"}
-        )
+        try:
+            # Read from database
+            signals = await self.db.get_recent_signals(limit=limit, signal_type=signal_type)
+            
+            # Parse JSON factors
+            for signal in signals:
+                if 'factors' in signal and isinstance(signal['factors'], str):
+                    try:
+                        signal['factors'] = json.loads(signal['factors'])
+                    except:
+                        signal['factors'] = []
+            
+            return web.json_response(
+                {
+                    "signals": signals,
+                    "total": len(signals),
+                    "source": "database"
+                },
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        except Exception as e:
+            logger.error(f"Error reading from database: {e}")
+            # Fallback to in-memory signals
+            filtered = self.signals
+            if signal_type:
+                filtered = [s for s in self.signals if s.get("signal_type") == signal_type]
+            
+            recent = sorted(filtered, key=lambda x: x.get("timestamp", ""), reverse=True)[:limit]
+            
+            return web.json_response(
+                {
+                    "signals": recent,
+                    "total": len(recent),
+                    "source": "memory",
+                    "error": str(e)
+                },
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+    
+    async def get_stats(self, request: web.Request) -> web.Response:
+        """Return signal statistics."""
+        try:
+            hours = int(request.query.get("hours", 24))
+            stats = await self.db.get_signals_stats(hours=hours)
+            
+            return web.json_response(
+                {
+                    "stats": stats,
+                    "period_hours": hours
+                },
+                headers={"Access-Control-Allow-Origin": "*"}
+            )
+        except Exception as e:
+            logger.error(f"Error getting stats: {e}")
+            return web.json_response(
+                {"error": str(e)},
+                headers={"Access-Control-Allow-Origin": "*"},
+                status=500
+            )
     
     async def health_check(self, request: web.Request) -> web.Response:
         """Health check endpoint."""
@@ -86,6 +128,9 @@ class SignalsAPI:
     
     async def start(self):
         """Start the API server."""
+        # Initialize database
+        await self.db._init_db()
+        
         runner = web.AppRunner(self.app)
         await runner.setup()
         
