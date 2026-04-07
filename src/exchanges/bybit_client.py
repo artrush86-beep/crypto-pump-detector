@@ -8,7 +8,13 @@ from datetime import datetime
 import backoff
 import logging
 
-from src.exchanges.proxy_session import create_session, get_proxy_url
+from src.exchanges.proxy_session import (
+    create_session,
+    get_proxy_candidates,
+    mark_proxy_failure,
+    mark_proxy_success,
+    mask_proxy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +38,9 @@ class BybitClient:
     
     def __init__(self):
         self.session: Optional[aiohttp.ClientSession] = None
-        self.proxy: Optional[str] = None
         
     async def __aenter__(self):
         self.session = create_session()
-        self.proxy = get_proxy_url()
         return self
         
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -46,26 +50,55 @@ class BybitClient:
     @backoff.on_exception(backoff.expo, (aiohttp.ClientError, asyncio.TimeoutError), max_tries=3)
     async def _request(self, endpoint: str, params: Dict = None) -> Any:
         url = f"{self.BASE_URL}{endpoint}"
-        kwargs = {"params": params or {}, "timeout": aiohttp.ClientTimeout(total=15)}
-        if self.proxy:
-            kwargs["proxy"] = self.proxy
-        
-        async with self.session.get(url, **kwargs) as response:
-            if response.status == 429:
-                logger.warning("Bybit rate limit hit, backing off...")
-                await asyncio.sleep(1)
-                raise aiohttp.ClientError("Rate limited")
-            if response.status == 403:
-                logger.error("Bybit 403 - IP may be blocked. Check PROXY_URL setting.")
-                raise aiohttp.ClientError("IP blocked by Bybit (403)")
-            
-            response.raise_for_status()
-            data = await response.json()
-            
-            if data.get('retCode') != 0:
-                raise aiohttp.ClientError(f"Bybit API error: {data.get('retMsg')}")
-            
-            return data['result']
+        timeout = aiohttp.ClientTimeout(total=15)
+        last_error: Optional[Exception] = None
+
+        for proxy in get_proxy_candidates(
+            "bybit",
+            max_candidates=3,
+            include_direct_fallback=True,
+        ):
+            kwargs = {"params": params or {}, "timeout": timeout}
+            if proxy:
+                kwargs["proxy"] = proxy
+                logger.debug("Bybit request via proxy %s", mask_proxy(proxy))
+            else:
+                logger.debug("Bybit request via direct connection")
+
+            try:
+                async with self.session.get(url, **kwargs) as response:
+                    if response.status == 429:
+                        logger.warning("Bybit rate limit hit, backing off...")
+                        await asyncio.sleep(1)
+                        raise aiohttp.ClientError("Rate limited")
+                    if response.status == 403:
+                        if proxy:
+                            mark_proxy_failure("bybit", proxy)
+                        logger.error("Bybit 403 - IP may be blocked. Check proxy settings.")
+                        raise aiohttp.ClientError("IP blocked by Bybit (403)")
+
+                    response.raise_for_status()
+                    data = await response.json()
+
+                    if data.get('retCode') != 0:
+                        raise aiohttp.ClientError(f"Bybit API error: {data.get('retMsg')}")
+
+                    mark_proxy_success("bybit", proxy)
+                    return data['result']
+            except (
+                aiohttp.ClientHttpProxyError,
+                aiohttp.ClientProxyConnectionError,
+                aiohttp.ClientConnectorError,
+            ) as exc:
+                if proxy:
+                    mark_proxy_failure("bybit", proxy)
+                last_error = exc
+                logger.warning("Bybit route failed via %s: %s", mask_proxy(proxy), exc)
+                continue
+
+        if last_error:
+            raise last_error
+        raise aiohttp.ClientError("No available route for Bybit request")
     
     async def get_all_symbols(self) -> List[str]:
         data = await self._request("/v5/market/instruments-info", {"category": "linear"})

@@ -8,7 +8,13 @@ from datetime import datetime
 import backoff
 import logging
 
-from src.exchanges.proxy_session import create_session, get_proxy_url
+from src.exchanges.proxy_session import (
+    create_session,
+    get_proxy_candidates,
+    mark_proxy_failure,
+    mark_proxy_success,
+    mask_proxy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +39,10 @@ class BinanceClient:
     
     def __init__(self):
         self.session: Optional[aiohttp.ClientSession] = None
-        self.proxy: Optional[str] = None
         self.weight_used = 0
         
     async def __aenter__(self):
         self.session = create_session()
-        self.proxy = get_proxy_url()
         return self
         
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -49,22 +53,45 @@ class BinanceClient:
     async def _request(self, endpoint: str, params: Dict = None) -> Any:
         """Make request to Binance API through proxy if configured."""
         url = f"{self.BASE_URL}{endpoint}"
-        kwargs = {"params": params or {}, "timeout": aiohttp.ClientTimeout(total=15)}
-        if self.proxy:
-            kwargs["proxy"] = self.proxy
-        
-        async with self.session.get(url, **kwargs) as response:
-            if response.status == 429:
-                logger.warning("Binance rate limit hit, backing off...")
-                await asyncio.sleep(1)
-                raise aiohttp.ClientError("Rate limited")
-            if response.status == 403:
-                logger.error("Binance 403 Forbidden - IP may be blocked. Check PROXY_URL setting.")
-                raise aiohttp.ClientError("IP blocked by Binance (403)")
-            
-            response.raise_for_status()
-            self.weight_used = int(response.headers.get('X-MBX-USED-WEIGHT-1M', 0))
-            return await response.json()
+        timeout = aiohttp.ClientTimeout(total=15)
+        last_error: Optional[Exception] = None
+
+        for proxy in get_proxy_candidates("binance", max_candidates=3):
+            kwargs = {"params": params or {}, "timeout": timeout}
+            if proxy:
+                kwargs["proxy"] = proxy
+                logger.debug("Binance request via proxy %s", mask_proxy(proxy))
+
+            try:
+                async with self.session.get(url, **kwargs) as response:
+                    if response.status == 429:
+                        logger.warning("Binance rate limit hit, backing off...")
+                        await asyncio.sleep(1)
+                        raise aiohttp.ClientError("Rate limited")
+                    if response.status == 403:
+                        if proxy:
+                            mark_proxy_failure("binance", proxy)
+                        logger.error("Binance 403 Forbidden - IP may be blocked. Check proxy settings.")
+                        raise aiohttp.ClientError("IP blocked by Binance (403)")
+
+                    response.raise_for_status()
+                    mark_proxy_success("binance", proxy)
+                    self.weight_used = int(response.headers.get('X-MBX-USED-WEIGHT-1M', 0))
+                    return await response.json()
+            except (
+                aiohttp.ClientHttpProxyError,
+                aiohttp.ClientProxyConnectionError,
+                aiohttp.ClientConnectorError,
+            ) as exc:
+                if proxy:
+                    mark_proxy_failure("binance", proxy)
+                last_error = exc
+                logger.warning("Binance proxy failed via %s: %s", mask_proxy(proxy), exc)
+                continue
+
+        if last_error:
+            raise last_error
+        raise aiohttp.ClientError("No available route for Binance request")
     
     async def get_all_symbols(self) -> List[str]:
         data = await self._request("/fapi/v1/exchangeInfo")

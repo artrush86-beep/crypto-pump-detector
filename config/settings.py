@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     # Proxy for bypassing IP bans on Railway
     # Supports: http://user:pass@host:port, socks5://user:pass@host:port
     PROXY_URL: Optional[str] = None
+    PROXY_URLS: str = ""
+    BINANCE_PROXY_URL: Optional[str] = None
+    BINANCE_PROXY_URLS: str = ""
+    BYBIT_PROXY_URL: Optional[str] = None
+    BYBIT_PROXY_URLS: str = ""
+    PROXY_COOLDOWN_SECONDS: int = 900
     
     # API Keys (optional for most free endpoints)
     COINGLASS_API_KEY: str = ""
@@ -32,6 +38,14 @@ class Settings(BaseSettings):
     
     # Signal scoring
     MIN_SIGNAL_SCORE: int = 3
+    EARLY_SIGNAL_MIN_SCORE: float = 2.5
+    ENABLE_EARLY_SIGNALS: bool = True
+    SIGNAL_COOLDOWN_SECONDS: int = 1800
+    EARLY_SIGNAL_COOLDOWN_SECONDS: int = 900
+
+    # Notifications / bot behavior
+    ERROR_NOTIFICATION_COOLDOWN_SECONDS: int = 1800
+    DEFAULT_ALERT_PERCENT: float = 2.0
     
     # Cache settings
     CACHE_TTL: int = 300

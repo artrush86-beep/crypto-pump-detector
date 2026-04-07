@@ -1,6 +1,6 @@
 # 🚀 Crypto Pump Detector — Railway Edition
 
-Бот для детекции памп/дамп сигналов на криптобиржах. Мониторит Open Interest, объёмы, фандинг и L/S ratio, шлёт алерты в Telegram.
+Бот для детекции ранних и подтверждённых LONG/SHORT сигналов на криптобиржах. Мониторит Open Interest, цену, объёмы, фандинг и L/S ratio, шлёт алерты в Telegram.
 
 ## ⚡ Быстрый деплой на Railway
 
@@ -14,7 +14,7 @@
    - `chat.id` = Chat ID (начинается с `-100`)
    - `message_thread_id` = Thread ID
 
-### 2. Получи прокси (обязательно для Binance!)
+### 2. Получи прокси (Binance почти всегда требует прокси на Railway)
 
 Binance блокирует IP Railway. Нужен HTTP/SOCKS5 прокси.
 
@@ -33,14 +33,23 @@ Binance блокирует IP Railway. Нужен HTTP/SOCKS5 прокси.
 3. Выбери репо
 4. Добавь переменные окружения (**Variables** tab):
 
-```
+```env
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGHI...
 TELEGRAM_CHAT_ID=-1001234567890
 TELEGRAM_THREAD_ID=123
+
+# Legacy global proxy fallback
 PROXY_URL=http://user:pass@proxy:port
+
+# Recommended: separate proxy pools
+BINANCE_PROXY_URLS=http://user:pass@ip1:port,http://user:pass@ip2:port
+BYBIT_PROXY_URL=
+
 SCAN_INTERVAL=300
-MIN_SIGNAL_SCORE=3
 TOP_N_SYMBOLS=100
+MIN_SIGNAL_SCORE=3
+EARLY_SIGNAL_MIN_SCORE=2.5
+DEFAULT_ALERT_PERCENT=2
 ```
 
 5. Railway автоматически задеплоит через Dockerfile
@@ -60,14 +69,37 @@ Bot started and sent startup message
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
-| `PROXY_URL` | — | HTTP/SOCKS5 прокси для обхода блокировок |
+| `PROXY_URL` | — | Legacy-глобальный прокси fallback |
+| `PROXY_URLS` | — | Глобальный список прокси fallback |
+| `BINANCE_PROXY_URL` | — | Прокси только для Binance |
+| `BINANCE_PROXY_URLS` | — | Список прокси только для Binance |
+| `BYBIT_PROXY_URL` | — | Прокси только для Bybit |
+| `BYBIT_PROXY_URLS` | — | Список прокси только для Bybit |
 | `SCAN_INTERVAL` | 300 | Интервал сканирования (секунды) |
 | `OI_CHANGE_THRESHOLD` | 5.0 | Порог изменения OI (%) |
 | `PRICE_CHANGE_THRESHOLD` | 1.0 | Порог изменения цены (%) |
 | `VOLUME_CHANGE_THRESHOLD` | 50.0 | Порог спайка объёма (%) |
 | `MIN_SIGNAL_SCORE` | 3 | Мин. оценка для сигнала (0-5) |
+| `EARLY_SIGNAL_MIN_SCORE` | 2.5 | Мин. скор для раннего предупреждения |
 | `TOP_N_SYMBOLS` | 100 | Кол-во пар для мониторинга |
+| `ERROR_NOTIFICATION_COOLDOWN_SECONDS` | 1800 | Ограничение спама ошибками в Telegram |
+| `DEFAULT_ALERT_PERCENT` | 2.0 | Порог для кнопки Alert |
 | `EXCHANGES` | binance,bybit | Биржи |
+
+## 🧠 Что изменилось
+
+- Таймфреймы теперь считаются по реальным снапшотам `5m / 15m / 1h`, а не по 24h-изменению цены.
+- Есть два вида сигналов:
+  - `EARLY` — давление формируется заранее.
+  - `CONFIRMED` — движение уже подтверждается ценой.
+- `TOP_N_SYMBOLS` теперь используется реально, пары выбираются стабильно по market cap.
+- Есть работающие команды:
+  - `/alert`
+  - `/ignore`
+  - `/unignore`
+  - `/ignored`
+  - `/stop`
+  - `/resume`
 
 ## 🧪 Тестирование прокси
 

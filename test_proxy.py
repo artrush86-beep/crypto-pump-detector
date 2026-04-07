@@ -1,14 +1,31 @@
 """Test script to verify proxy and API connectivity."""
 
+from __future__ import annotations
+
 import asyncio
-import aiohttp
-import sys
 import os
+import sys
+from typing import Optional
+
+import aiohttp
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 
-async def test_api(name: str, url: str, proxy: str = None):
+def _parse_first_proxy(*values: Optional[str]) -> Optional[str]:
+    """Return first proxy from single-value or list-based env vars."""
+    for value in values:
+        if not value:
+            continue
+        normalized = value.replace(";", "\n").replace(",", "\n")
+        for chunk in normalized.splitlines():
+            proxy = chunk.strip()
+            if proxy:
+                return proxy
+    return None
+
+
+async def test_api(name: str, url: str, proxy: Optional[str] = None) -> bool:
     """Test single API endpoint."""
     try:
         timeout = aiohttp.ClientTimeout(total=15)
@@ -16,52 +33,68 @@ async def test_api(name: str, url: str, proxy: str = None):
             kwargs = {}
             if proxy:
                 kwargs["proxy"] = proxy
-            
+
             async with session.get(url, **kwargs) as resp:
                 data = await resp.text()
                 status = "✅" if resp.status == 200 else "⚠️"
-                print(f"{status} {name}: HTTP {resp.status} ({len(data)} bytes)")
+                route = proxy.split("@")[-1] if proxy and "@" in proxy else (proxy or "direct")
+                print(f"{status} {name} via {route}: HTTP {resp.status} ({len(data)} bytes)")
                 if resp.status != 200:
                     print(f"   Response: {data[:200]}")
                 return resp.status == 200
-    except Exception as e:
-        print(f"❌ {name}: {e}")
+    except Exception as exc:
+        route = proxy.split("@")[-1] if proxy and "@" in proxy else (proxy or "direct")
+        print(f"❌ {name} via {route}: {exc}")
         return False
 
 
 async def main():
-    proxy = os.environ.get("PROXY_URL")
-    
-    print("=" * 50)
+    global_proxy = _parse_first_proxy(os.environ.get("PROXY_URLS"), os.environ.get("PROXY_URL"))
+    binance_proxy = _parse_first_proxy(
+        os.environ.get("BINANCE_PROXY_URLS"),
+        os.environ.get("BINANCE_PROXY_URL"),
+        global_proxy,
+    )
+    bybit_proxy = _parse_first_proxy(
+        os.environ.get("BYBIT_PROXY_URLS"),
+        os.environ.get("BYBIT_PROXY_URL"),
+        global_proxy,
+    )
+
+    print("=" * 60)
     print("Crypto Pump Detector - Connectivity Test")
-    print("=" * 50)
-    
-    if proxy:
-        masked = proxy.split("@")[-1] if "@" in proxy else proxy
-        print(f"\n🔄 Proxy: {masked}")
-    else:
-        print("\n⚠️  No PROXY_URL set — testing direct connection")
-    
+    print("=" * 60)
+
+    print(f"Binance proxy: {(binance_proxy or 'direct').split('@')[-1] if binance_proxy else 'direct'}")
+    print(f"Bybit proxy: {(bybit_proxy or 'direct').split('@')[-1] if bybit_proxy else 'direct'}")
+
     apis = {
-        "Binance Futures": "https://fapi.binance.com/fapi/v1/ticker/price?symbol=BTCUSDT",
-        "Bybit V5": "https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT",
-        "CoinGecko": "https://api.coingecko.com/api/v3/ping",
-        "Telegram": "https://api.telegram.org/",
+        "Binance Futures": (
+            "https://fapi.binance.com/fapi/v1/ticker/price?symbol=BTCUSDT",
+            binance_proxy,
+        ),
+        "Bybit V5": (
+            "https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT",
+            bybit_proxy,
+        ),
+        "CoinGecko": (
+            "https://api.coingecko.com/api/v3/ping",
+            None,
+        ),
+        "Telegram": (
+            "https://api.telegram.org/",
+            None,
+        ),
     }
-    
-    print("\n--- Без прокси (прямое соединение) ---")
-    for name, url in apis.items():
-        await test_api(name, url)
-    
-    if proxy:
-        print(f"\n--- Через прокси ---")
-        for name, url in apis.items():
-            await test_api(f"{name} (proxy)", url, proxy)
-    
-    print("\n" + "=" * 50)
-    print("Если Binance ❌ без прокси, но ✅ через прокси — всё настроено верно!")
-    print("=" * 50)
+
+    for name, (url, proxy) in apis.items():
+        await test_api(name, url, proxy)
+
+    print("\n" + "=" * 60)
+    print("Если Binance доступен только через proxy, а Bybit работает direct — это нормальный прод-режим для Railway.")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
+

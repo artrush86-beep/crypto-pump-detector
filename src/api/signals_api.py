@@ -66,7 +66,18 @@ class SignalsAPI:
                         signal_dict['factors'] = []
                 
                 # Ensure numeric fields
-                for field in ['oi_change', 'volume_change', 'price_change', 'price', 'funding_rate', 'long_short_ratio']:
+                for field in [
+                    'oi_change',
+                    'oi_change_pct',
+                    'volume_change',
+                    'volume_change_pct',
+                    'price_change',
+                    'price_change_pct',
+                    'price',
+                    'funding_rate',
+                    'long_short_ratio',
+                    'score',
+                ]:
                     if field in signal_dict:
                         try:
                             signal_dict[field] = float(signal_dict[field]) if signal_dict[field] else 0

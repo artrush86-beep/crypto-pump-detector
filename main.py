@@ -4,8 +4,8 @@ import asyncio
 import logging
 import signal
 import sys
-from datetime import datetime, timedelta
-from typing import Dict, Set
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Set, Tuple
 import time
 
 from config.settings import settings
@@ -62,11 +62,18 @@ class PumpDetectorApp:
         self.start_time = None
         self.stats = {
             'signals_count': 0,
+            'early_signals_count': 0,
+            'confirmed_signals_count': 0,
             'pairs_count': 0,
             'last_scan': None
         }
         self.market_caps: Dict[str, float] = {}
         self.all_symbols: Set[str] = set()
+        self.exchange_symbols: Dict[str, List[str]] = {}
+        self.latest_market_data: Dict[str, Dict[str, Any]] = {}
+        self.ignored_symbols: Set[str] = set()
+        self.scan_paused = False
+        self.last_error_notifications: Dict[str, datetime] = {}
         # Initialize API server for dashboard (Railway provides PORT env var)
         import os
         port = int(os.environ.get("PORT", 8080))
@@ -74,10 +81,124 @@ class PumpDetectorApp:
         # Initialize database
         self.db = SignalsDatabase()
         logger.info(f"Signals API initialized on port {port}, database ready")
+
+    def _base_symbol(self, symbol: str) -> str:
+        return symbol.replace("USDT", "").replace("USD", "")
+
+    def _select_top_symbols(self, symbols: List[str]) -> List[str]:
+        """Select a stable top-N list ordered by market cap."""
+        filtered = [
+            symbol for symbol in symbols
+            if self.market_caps.get(self._base_symbol(symbol), 0) >= settings.MIN_MARKET_CAP
+        ]
+        ordered = sorted(
+            filtered,
+            key=lambda item: (
+                -self.market_caps.get(self._base_symbol(item), 0),
+                item,
+            ),
+        )
+        return ordered[:settings.TOP_N_SYMBOLS]
+
+    async def _load_persistent_state(self) -> None:
+        """Load ignore list and paused state from the database."""
+        self.ignored_symbols = set(await self.db.get_ignored_symbols())
+        self.scan_paused = (await self.db.get_bot_state("scan_paused", "0")) == "1"
+        logger.info(
+            "Loaded state: ignored=%s paused=%s",
+            len(self.ignored_symbols),
+            self.scan_paused,
+        )
+
+    def _get_latest_symbol_snapshot(self, symbol: str) -> Tuple[Optional[str], Optional[Any]]:
+        """Return latest market snapshot for symbol, preferring Binance then Bybit."""
+        upper_symbol = symbol.upper()
+        for exchange_name in ("binance", "bybit"):
+            snapshot = self.latest_market_data.get(exchange_name, {}).get(upper_symbol)
+            if snapshot:
+                return exchange_name, snapshot
+        return None, None
+
+    async def create_price_alert(
+        self,
+        symbol: str,
+        percent: float,
+        chat_id: str,
+        thread_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Create a real symmetric price alert from the latest cached quote."""
+        exchange_name, snapshot = self._get_latest_symbol_snapshot(symbol)
+        if not snapshot:
+            return {
+                "ok": False,
+                "reason": "pair not cached yet",
+            }
+
+        current_price = getattr(snapshot, "price", 0.0)
+        if not current_price:
+            return {
+                "ok": False,
+                "reason": "price unavailable",
+            }
+
+        await self.db.add_symmetric_price_alert(
+            symbol=symbol.upper(),
+            exchange=exchange_name,
+            reference_price=current_price,
+            target_change_pct=percent,
+            chat_id=chat_id,
+            thread_id=thread_id,
+        )
+        return {
+            "ok": True,
+            "symbol": symbol.upper(),
+            "exchange": exchange_name,
+            "reference_price": current_price,
+            "percent": percent,
+        }
+
+    async def ignore_symbol(self, symbol: str) -> None:
+        upper_symbol = symbol.upper()
+        await self.db.add_ignored_symbol(upper_symbol)
+        self.ignored_symbols.add(upper_symbol)
+
+    async def unignore_symbol(self, symbol: str) -> None:
+        upper_symbol = symbol.upper()
+        await self.db.remove_ignored_symbol(upper_symbol)
+        self.ignored_symbols.discard(upper_symbol)
+
+    async def list_ignored_symbols(self) -> List[str]:
+        return sorted(self.ignored_symbols)
+
+    async def set_scan_paused(self, paused: bool) -> None:
+        self.scan_paused = paused
+        await self.db.set_bot_state("scan_paused", "1" if paused else "0")
+
+    def runtime_status(self) -> Dict[str, Any]:
+        """Snapshot for Telegram commands."""
+        return {
+            "scan_paused": self.scan_paused,
+            "ignored_count": len(self.ignored_symbols),
+            "exchange_symbols": self.exchange_symbols,
+            "stats": self.stats,
+        }
+
+    def _should_notify_error(self, exchange_name: str, message: str) -> bool:
+        """Throttle repetitive error notifications to Telegram."""
+        normalized = f"{exchange_name}:{message[:80]}"
+        now = datetime.utcnow()
+        last_sent = self.last_error_notifications.get(normalized)
+        if last_sent:
+            elapsed = (now - last_sent).total_seconds()
+            if elapsed < settings.ERROR_NOTIFICATION_COOLDOWN_SECONDS:
+                return False
+        self.last_error_notifications[normalized] = now
+        return True
         
     async def initialize(self):
         """Initialize market data and symbols."""
         logger.info("Initializing Pump Detector...")
+        await self._load_persistent_state()
         
         # Get market cap data from CoinGecko
         async with CoinGeckoClient() as cg:
@@ -96,15 +217,29 @@ class PumpDetectorApp:
             logger.error(f"Binance unavailable: {e}")
             binance_symbols = []
             
-        async with BybitClient() as bybit:
-            bybit_symbols = await bybit.get_all_symbols()
-            logger.info(f"Bybit: {len(bybit_symbols)} symbols")
+        try:
+            async with BybitClient() as bybit:
+                bybit_symbols = await bybit.get_all_symbols()
+                logger.info(f"Bybit: {len(bybit_symbols)} symbols")
+        except Exception as e:
+            logger.error(f"Bybit unavailable: {e}")
+            bybit_symbols = []
         
-        # Union of symbols from both exchanges
-        self.all_symbols = set(binance_symbols) | set(bybit_symbols)
+        self.exchange_symbols = {
+            "binance": self._select_top_symbols(binance_symbols),
+            "bybit": self._select_top_symbols(bybit_symbols),
+        }
+        self.latest_market_data = {"binance": {}, "bybit": {}}
+
+        self.all_symbols = set(self.exchange_symbols["binance"]) | set(self.exchange_symbols["bybit"])
         self.stats['pairs_count'] = len(self.all_symbols)
         
-        logger.info(f"Total unique symbols to monitor: {len(self.all_symbols)}")
+        logger.info(
+            "Selected pairs: Binance=%s Bybit=%s Total unique=%s",
+            len(self.exchange_symbols["binance"]),
+            len(self.exchange_symbols["bybit"]),
+            len(self.all_symbols),
+        )
         
     async def scan_exchange(
         self,
@@ -113,18 +248,25 @@ class PumpDetectorApp:
     ):
         """Scan single exchange for signals."""
         try:
+            symbols = self.exchange_symbols.get(exchange_name, [])
+            if not symbols:
+                logger.warning("No symbols configured for %s", exchange_name)
+                return
+
             if exchange_name == "binance":
                 async with BinanceClient() as client:
-                    data = await client.get_market_data_batch(list(self.all_symbols)[:100])
+                    data = await client.get_market_data_batch(symbols)
             elif exchange_name == "bybit":
                 async with BybitClient() as client:
-                    data = await client.get_market_data_batch(list(self.all_symbols)[:80])
+                    data = await client.get_market_data_batch(symbols)
             else:
                 return
             
             if not data:
                 logger.warning(f"No data from {exchange_name}")
                 return
+
+            self.latest_market_data[exchange_name] = data
             
             logger.info(f"Scanning {exchange_name}: {len(data)} symbols")
             
@@ -146,41 +288,47 @@ class PumpDetectorApp:
                     for signal in signals:
                         signal.timeframe = timeframe
                     
-                    # Filter signals by score (>= 3/5) and save to DB
+                    # Filter ignored symbols, save to DB, then notify
                     filtered_signals = []
                     for signal in signals:
-                        if signal.score >= 3:  # Filter: only score >= 3
-                            filtered_signals.append(signal)
-                            # Save to database
-                            await self.db.save_signal({
-                                'symbol': signal.symbol,
-                                'exchange': signal.exchange,
-                                'signal_type': signal.signal_type,
-                                'score': signal.score,
-                                'price': 0,
-                                'price_change': signal.price_change_pct,
-                                'oi_change': signal.oi_change_pct,
-                                'volume_change': signal.volume_change_pct,
-                                'funding_rate': signal.funding_rate,
-                                'long_short_ratio': signal.long_short_ratio,
-                                'factors': signal.details.get('factors', []),
-                                'timestamp': signal.timestamp.isoformat()
-                            })
+                        if signal.symbol in self.ignored_symbols:
+                            logger.info("Ignored signal skipped: %s", signal.symbol)
+                            continue
+                        filtered_signals.append(signal)
+                        await self.db.save_signal({
+                            'symbol': signal.symbol,
+                            'exchange': signal.exchange,
+                            'signal_type': signal.signal_type,
+                            'score': signal.score,
+                            'price': getattr(data.get(signal.symbol), 'price', 0),
+                            'price_change': signal.price_change_pct,
+                            'oi_change': signal.oi_change_pct,
+                            'volume_change': signal.volume_change_pct,
+                            'funding_rate': signal.funding_rate,
+                            'long_short_ratio': signal.long_short_ratio,
+                            'factors': signal.details.get('factors', []),
+                            'timeframe': signal.timeframe,
+                            'stage': signal.stage,
+                            'timestamp': signal.timestamp.isoformat()
+                        })
                     
                     if filtered_signals:
                         await bot.send_signals_batch(filtered_signals)
                         self.stats['signals_count'] += len(filtered_signals)
+                        self.stats['early_signals_count'] += len([s for s in filtered_signals if s.stage == "EARLY"])
+                        self.stats['confirmed_signals_count'] += len([s for s in filtered_signals if s.stage == "CONFIRMED"])
             
             # Check price alerts
-            await self._check_price_alerts(data, bot)
+            await self._check_price_alerts(exchange_name, data, bot)
             
             self.stats['last_scan'] = datetime.utcnow()
             
         except Exception as e:
             logger.error(f"Error scanning {exchange_name}: {e}")
-            await bot.send_error(f"{exchange_name} scan error: {str(e)[:100]}")
+            if self._should_notify_error(exchange_name, str(e)):
+                await bot.send_error(f"{exchange_name} scan error: {str(e)[:160]}")
     
-    async def _check_price_alerts(self, data: Dict, bot: SignalBot):
+    async def _check_price_alerts(self, exchange_name: str, data: Dict, bot: SignalBot):
         """Check price alerts and trigger if threshold reached."""
         try:
             alerts = await self.db.get_active_alerts()
@@ -190,6 +338,9 @@ class PumpDetectorApp:
             for alert in alerts:
                 symbol = alert['symbol']
                 exchange = alert['exchange']
+
+                if exchange != exchange_name:
+                    continue
                 
                 # Find symbol in current data
                 market_data = data.get(symbol)
@@ -218,11 +369,14 @@ class PumpDetectorApp:
                     # Send alert
                     await bot.send_message(
                         f"🔔 <b>ЦЕНОВОЙ АЛЕРТ СРАБОТАЛ!</b>\n\n"
-                        f"<b>{symbol}</b>\n"
+                        f"<b>{symbol}</b> ({exchange_name})\n"
                         f"Цена изменилась на {price_change_pct:+.2f}%\n"
                         f"Было: ${reference_price:.4f}\n"
                         f"Сейчас: ${current_price:.4f}\n\n"
                         f"Алерт удалён."
+                        ,
+                        chat_id=alert['chat_id'],
+                        thread_id=alert.get('thread_id'),
                     )
                     # Mark as triggered
                     await self.db.mark_alert_triggered(alert['id'])
@@ -237,12 +391,18 @@ class PumpDetectorApp:
         
         while self.running:
             try:
+                if self.scan_paused:
+                    logger.info("Scan paused by operator")
+                    await asyncio.wait_for(self._stop_event.wait(), timeout=10)
+                    continue
+
                 start_time = time.time()
                 
                 # Scan both exchanges
-                await self.scan_exchange("binance", bot)
-                await asyncio.sleep(2)  # Small delay between exchanges
-                await self.scan_exchange("bybit", bot)
+                for idx, exchange_name in enumerate(settings.EXCHANGES):
+                    await self.scan_exchange(exchange_name, bot)
+                    if idx < len(settings.EXCHANGES) - 1:
+                        await asyncio.sleep(2)
                 
                 elapsed = time.time() - start_time
                 sleep_time = max(0, settings.SCAN_INTERVAL - elapsed)
@@ -314,7 +474,7 @@ class PumpDetectorApp:
             await self.initialize()
             
             # Start bot with API reference for signal tracking
-            async with SignalBot(signals_api=self.signals_api) as bot:
+            async with SignalBot(signals_api=self.signals_api, controller=self) as bot:
                 await bot.start()
                 
                 # Start Telegram polling for button callbacks
