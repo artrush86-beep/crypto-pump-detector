@@ -525,15 +525,25 @@
                 const html = filtered.map((signal, index) => {
                     console.log(`Signal ${index}:`, signal);
                     
+                    // Defensive check for null/undefined signal
+                    if (!signal || typeof signal !== 'object') {
+                        console.warn(`Invalid signal at index ${index}:`, signal);
+                        return '';
+                    }
+                    
                     const isPump = signal.signal_type === 'pump';
-                    const scoreClass = signal.score >= 4 ? 'score-high' : 
-                                      signal.score >= 3 ? 'score-medium' : 'score-low';
+                    const score = parseFloat(signal.score) || 0;
+                    const scoreClass = score >= 4 ? 'score-high' : 
+                                      score >= 3 ? 'score-medium' : 'score-low';
                     
                     // Handle both database fields (snake_case) and API fields
-                    let oiChange = signal.oi_change || signal.oiChange || 0;
-                    let volumeChange = signal.volume_change || signal.volumeChange || 0;
-                    let price = signal.price || 0;
-                    let exchange = signal.exchange || '-';
+                    let oiChange = signal.oi_change ?? signal.oiChange ?? 0;
+                    let volumeChange = signal.volume_change ?? signal.volumeChange ?? 0;
+                    let price = signal.price ?? 0;
+                    let exchange = signal.exchange ?? '-';
+                    let symbol = signal.symbol ?? '?';
+                    let signalType = signal.signal_type ?? '?';
+                    let timestamp = signal.timestamp;
                     
                     // Ensure numeric values
                     oiChange = parseFloat(oiChange) || 0;
@@ -541,14 +551,14 @@
                     price = parseFloat(price) || 0;
                     
                     return `
-                        <div class="signal-row" onclick="openChart('${signal.symbol}')">
-                            <div class="symbol">${signal.symbol || '?'}</div>
+                        <div class="signal-row" onclick="openChart('${symbol}')">
+                            <div class="symbol">${symbol}</div>
                             <div>
                                 <span class="badge ${isPump ? 'badge-pump' : 'badge-dump'}">
-                                    ${signal.signal_type || '?'}
+                                    ${signalType}
                                 </span>
                             </div>
-                            <div class="score ${scoreClass}">${signal.score || 0}/5</div>
+                            <div class="score ${scoreClass}">${score}/5</div>
                             <div class="price">$${formatNumber(price)}</div>
                             <div class="change ${oiChange > 0 ? 'change-positive' : 'change-negative'}">
                                 ${oiChange > 0 ? '+' : ''}${oiChange.toFixed(1)}%
@@ -557,12 +567,17 @@
                                 ${volumeChange > 0 ? '+' : ''}${volumeChange.toFixed(1)}%
                             </div>
                             <div class="exchange">${exchange}</div>
-                            <div class="time">${formatTime(signal.timestamp)}</div>
+                            <div class="time">${formatTime(timestamp)}</div>
                         </div>
                     `;
                 }).join('');
                 
-                document.getElementById('signalsList').innerHTML = html;
+                document.getElementById('signalsList').innerHTML = html || `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <div>No valid signals to display</div>
+                    </div>
+                `;
             } catch (err) {
                 console.error('Render error:', err);
                 document.getElementById('signalsList').innerHTML = `
