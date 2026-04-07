@@ -315,8 +315,8 @@ class PumpDetectorApp:
                     if filtered_signals:
                         await bot.send_signals_batch(filtered_signals)
                         self.stats['signals_count'] += len(filtered_signals)
-                        self.stats['early_signals_count'] += len([s for s in filtered_signals if s.stage == "EARLY"])
-                        self.stats['confirmed_signals_count'] += len([s for s in filtered_signals if s.stage == "CONFIRMED"])
+                        self.stats['early_signals_count'] += len([s for s in filtered_signals if s.stage == "EARLY - подготовка (предупреждение)"])
+                        self.stats['confirmed_signals_count'] += len([s for s in filtered_signals if s.stage == "CONFIRMED - подтверждение направления"])
             
             # Check price alerts
             await self._check_price_alerts(exchange_name, data, bot)
