@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     OI_CHANGE_THRESHOLD: float = 5.0
     PRICE_CHANGE_THRESHOLD: float = 1.0
     VOLUME_CHANGE_THRESHOLD: float = 50.0
-    MIN_MARKET_CAP: float = 10_000_000
+    MIN_MARKET_CAP: float = 1_000_000
     
     # Time intervals (seconds)
     SCAN_INTERVAL: int = 300
