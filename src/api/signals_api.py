@@ -142,18 +142,35 @@ class SignalsAPI:
         )
     
     def add_signal(self, signal: Dict[str, Any]):
-        """Add a new signal."""
+        """Add a new signal to memory and database."""
         # Add timestamp if not present
         if "timestamp" not in signal:
             signal["timestamp"] = datetime.utcnow().isoformat()
         
+        # Add to in-memory list
         self.signals.insert(0, signal)
         
-        # Keep only last 1000 signals
+        # Keep only last 1000 signals in memory
         if len(self.signals) > 1000:
             self.signals = self.signals[:1000]
         
-        logger.info(f"Signal added to API, total: {len(self.signals)}")
+        # Persist to database (async operation in sync context)
+        try:
+            import asyncio
+            # Create async task to save to database
+            asyncio.create_task(self._save_signal_to_db(signal))
+        except Exception as e:
+            logger.warning(f"Failed to schedule DB save for signal: {e}")
+        
+        logger.info(f"Signal added to API, total in memory: {len(self.signals)}")
+    
+    async def _save_signal_to_db(self, signal: Dict[str, Any]):
+        """Save signal to database."""
+        try:
+            await self.db.save_signal(signal)
+            logger.debug(f"Signal saved to database: {signal.get('symbol')}")
+        except Exception as e:
+            logger.error(f"Failed to save signal to database: {e}")
     
     async def start(self):
         """Start the API server."""
