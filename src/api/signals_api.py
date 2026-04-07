@@ -8,6 +8,7 @@ import aiohttp
 from aiohttp import web
 
 from src.database.signals_db import SignalsDatabase
+from src.database.redis_signals import redis_store
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,12 @@ class SignalsAPI:
         self.app.router.add_options("/api/signals", self.cors_preflight)
         # Initialize database connection
         self.db = SignalsDatabase()
+        self.use_redis = False
+        
+    async def init_redis(self):
+        """Initialize Redis connection if available."""
+        self.use_redis = await redis_store.connect()
+        return self.use_redis
         
     async def cors_preflight(self, request: web.Request) -> web.Response:
         """Handle CORS preflight."""
@@ -46,7 +53,20 @@ class SignalsAPI:
         signal_type = request.query.get("type")  # pump, dump, or None for all
         
         try:
-            # Read from database
+            # Try Redis first if connected
+            if self.use_redis:
+                signals = await redis_store.get_recent_signals(limit=limit, signal_type=signal_type)
+                if signals:
+                    return web.json_response(
+                        {
+                            "signals": signals,
+                            "total": len(signals),
+                            "source": "redis"
+                        },
+                        headers={"Access-Control-Allow-Origin": "*"}
+                    )
+            
+            # Fallback to SQLite database
             signals = await self.db.get_recent_signals(limit=limit, signal_type=signal_type)
             
             # Convert Row objects to dict and parse JSON factors
@@ -117,6 +137,20 @@ class SignalsAPI:
         """Return signal statistics."""
         try:
             hours = int(request.query.get("hours", 24))
+            
+            # Try Redis first
+            if self.use_redis:
+                stats = await redis_store.get_signals_stats(hours=hours)
+                return web.json_response(
+                    {
+                        "stats": stats,
+                        "period_hours": hours,
+                        "source": "redis"
+                    },
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
+            
+            # Fallback to SQLite
             stats = await self.db.get_signals_stats(hours=hours)
             
             return web.json_response(
@@ -165,16 +199,33 @@ class SignalsAPI:
         logger.info(f"Signal added to API, total in memory: {len(self.signals)}")
     
     async def _save_signal_to_db(self, signal: Dict[str, Any]):
-        """Save signal to database."""
+        """Save signal to Redis and/or database."""
+        errors = []
+        
+        # Try Redis first
+        if self.use_redis:
+            try:
+                success = await redis_store.save_signal(signal)
+                if success:
+                    logger.debug(f"Signal saved to Redis: {signal.get('symbol')}")
+                    return
+            except Exception as e:
+                errors.append(f"Redis: {e}")
+        
+        # Fallback to SQLite
         try:
             await self.db.save_signal(signal)
-            logger.debug(f"Signal saved to database: {signal.get('symbol')}")
+            logger.debug(f"Signal saved to SQLite: {signal.get('symbol')}")
         except Exception as e:
-            logger.error(f"Failed to save signal to database: {e}")
+            errors.append(f"SQLite: {e}")
+            logger.error(f"Failed to save signal: {'; '.join(errors)}")
     
     async def start(self):
         """Start the API server."""
-        # Initialize database
+        # Initialize Redis (optional)
+        await self.init_redis()
+        
+        # Initialize SQLite database
         await self.db._init_db()
         
         runner = web.AppRunner(self.app)
