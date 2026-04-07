@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     # Database
     DB_PATH: str = "data/signals.db"
     
+    # Redis (Upstash) for persistent signal storage
+    REDIS_URL: Optional[str] = None  # e.g., rediss://default:pass@host:port
+    
     class Config:
         env_file = ".env"
 
