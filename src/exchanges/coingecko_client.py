@@ -89,7 +89,11 @@ class CoinGeckoClient:
     
     async def get_market_cap_map(self, min_market_cap: float = 10_000_000) -> Dict[str, float]:
         """Get mapping of symbol -> market cap, filtering by minimum."""
-        markets = await self.get_coins_markets(per_page=250)
+        try:
+            markets = await self.get_coins_markets(per_page=250)
+        except Exception as e:
+            logger.warning(f"Failed to fetch CoinGecko markets: {e}")
+            return {}  # Return empty on failure
         
         result = {}
         for coin in markets:
