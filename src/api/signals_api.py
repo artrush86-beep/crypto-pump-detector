@@ -24,7 +24,9 @@ class SignalsAPI:
         self.app.router.add_get("/api/signals", self.get_signals)
         self.app.router.add_get("/api/health", self.health_check)
         self.app.router.add_get("/api/stats", self.get_stats)
+        self.app.router.add_get("/api/pairs", self.get_pairs)
         self.app.router.add_options("/api/signals", self.cors_preflight)
+        self.app.router.add_options("/api/pairs", self.cors_preflight)
         # Initialize database connection
         self.db = SignalsDatabase()
         self.use_redis = False
@@ -172,6 +174,19 @@ class SignalsAPI:
         """Health check endpoint."""
         return web.json_response(
             {"status": "ok", "signals_count": len(self.signals)},
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
+    
+    async def get_pairs(self, request: web.Request) -> web.Response:
+        """Return scanning pairs configuration."""
+        return web.json_response(
+            {
+                "total_pairs": 73,
+                "binance_pairs": 61,
+                "bybit_pairs": 29,
+                "exchanges": ["binance", "bybit"],
+                "top_coins": 249
+            },
             headers={"Access-Control-Allow-Origin": "*"}
         )
     
