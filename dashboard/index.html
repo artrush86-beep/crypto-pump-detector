@@ -599,14 +599,17 @@
             const widgetContainer = document.getElementById('tradingview-widget');
             widgetContainer.innerHTML = '';
             
+            // TradingView symbol format for Binance perpetuals
+            const tvSymbol = `BINANCE:${symbol}.P`;
+            
             new TradingView.widget({
                 container: 'tradingview-widget',
-                symbol: `BINANCE:${symbol}`,
+                symbol: tvSymbol,
                 interval: '15',
-                timezone: 'Etc/UTC',
+                timezone: 'Europe/Moscow',
                 theme: 'dark',
                 style: '1',
-                locale: 'en',
+                locale: 'ru',
                 toolbar_bg: '#161b22',
                 enable_publishing: false,
                 hide_top_toolbar: false,
@@ -669,7 +672,7 @@
             if (!stage) return '-';
             const isEarly = stage.toUpperCase().includes('EARLY');
             const bg = isEarly ? '#d29922' : '#238636';
-            const text = isEarly ? 'EARLY' : 'CONFIRMED';
+            const text = isEarly ? 'РАННИЙ' : 'ПОДТВЕРЖДЕННЫЙ';
             return `<span style="background: ${bg}; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">${text}</span>`;
         }
         
