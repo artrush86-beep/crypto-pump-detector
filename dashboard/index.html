@@ -437,7 +437,8 @@
             
             try {
                 updateStatus('loading');
-                const response = await fetch(apiUrl);
+                const url = apiUrl.includes('?') ? `${apiUrl}&limit=200` : `${apiUrl}?limit=200`;
+                const response = await fetch(url);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
@@ -484,10 +485,11 @@
         }
         
         function updateStats(data) {
-            document.getElementById('totalSignals').textContent = data.total || 0;
+            const highScoreSignals = signalsData.filter(s => (parseFloat(s.score) || 0) >= 3);
+            document.getElementById('totalSignals').textContent = highScoreSignals.length;
             
-            const pumps = signalsData.filter(s => s.signal_type?.toLowerCase() === 'pump').length;
-            const dumps = signalsData.filter(s => s.signal_type?.toLowerCase() === 'dump').length;
+            const pumps = highScoreSignals.filter(s => s.signal_type?.toLowerCase() === 'pump').length;
+            const dumps = highScoreSignals.filter(s => s.signal_type?.toLowerCase() === 'dump').length;
             
             document.getElementById('pumpCount').textContent = pumps;
             document.getElementById('dumpCount').textContent = dumps;
@@ -509,10 +511,11 @@
         function renderSignals() {
             console.log('Rendering signals:', signalsData);
             
-            let filtered = signalsData;
+            // Only show signals with score >= 3
+            let filtered = signalsData.filter(s => (parseFloat(s.score) || 0) >= 3);
             
             if (currentFilter !== 'all') {
-                filtered = signalsData.filter(s => s.signal_type?.toLowerCase() === currentFilter);
+                filtered = filtered.filter(s => s.signal_type?.toLowerCase() === currentFilter);
             }
             
             if (filtered.length === 0) {
@@ -603,32 +606,47 @@
         }
         
         function openChart(symbol) {
+            console.log('Opening chart for:', symbol);
             document.getElementById('chartTitle').textContent = `Chart: ${symbol}`;
             document.getElementById('chartModal').classList.add('active');
             
             const widgetContainer = document.getElementById('tradingview-widget');
-            widgetContainer.innerHTML = '';
             
-            // TradingView Mini Chart Widget (allows embedding)
-            const tvSymbol = `BINANCE:${symbol}`;
+            const params = encodeURIComponent(JSON.stringify({
+                symbol: `BINANCE:${symbol}`,
+                interval: '15',
+                timezone: 'Europe/Moscow',
+                theme: 'dark',
+                style: '1',
+                locale: 'en',
+                toolbar_bg: '#161b22',
+                enable_publishing: false,
+                hide_top_toolbar: false,
+                save_image: false,
+                container_id: 'tradingview_chart'
+            }));
+            
             widgetContainer.innerHTML = `
-                <div class="tradingview-widget-container" style="width:100%;height:100%;">
-                    <div class="tradingview-widget-container__widget" style="width:100%;height:100%;"></div>
-                    <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-mini-chart.js" async>
-                    {
-                        "symbol": "${tvSymbol}",
-                        "width": "100%",
-                        "height": "100%",
-                        "locale": "en",
-                        "dateRange": "1D",
-                        "colorTheme": "dark",
-                        "trendLineColor": "#37a6ef",
-                        "underLineColor": "rgba(55, 166, 239, 0.15)",
-                        "isTransparent": false,
-                        "autosize": true,
-                        "largeChartUrl": "https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}"
-                    }
-                    <\/script>
+                <iframe 
+                    src="https://s.tradingview.com/embed-widget/advanced-chart/?locale=en#${params}"
+                    style="width:100%;height:100%;border:none;"
+                    allowtransparency="true"
+                    allowfullscreen>
+                </iframe>
+            `;
+        }
+        
+        function showChartError(container, symbol, error) {
+            container.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#8b949e;padding:20px;">
+                    <div style="font-size:48px;margin-bottom:20px;">📊</div>
+                    <div style="font-size:18px;margin-bottom:10px;">Chart unavailable</div>
+                    <div style="font-size:14px;color:#f85149;margin-bottom:20px;">${error}</div>
+                    <a href="https://www.tradingview.com/chart/?symbol=BINANCE:${symbol}&interval=15" 
+                       target="_blank" 
+                       style="background:#238636;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;">
+                       Open in TradingView
+                    </a>
                 </div>
             `;
         }
