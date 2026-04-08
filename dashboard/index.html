@@ -129,16 +129,16 @@
         
         .table-header {
             display: grid;
-            grid-template-columns: 1.2fr 0.8fr 0.6fr 1fr 1fr 1fr 0.8fr 1fr;
-            gap: 10px;
-            padding: 12px 20px;
+            grid-template-columns: 1fr 0.7fr 1fr 0.9fr 0.6fr 1fr 0.9fr 0.9fr 1fr 0.6fr 0.8fr 0.9fr 1.2fr;
+            gap: 8px;
+            padding: 12px 15px;
             background: #21262d;
             border-bottom: 1px solid #30363d;
-            font-size: 12px;
+            font-size: 10px;
             font-weight: 600;
             color: #8b949e;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.3px;
         }
         
         .signal-row {
@@ -391,10 +391,15 @@
             <div class="table-header">
                 <div>Symbol</div>
                 <div>Type</div>
+                <div>Stage</div>
+                <div>Direction</div>
                 <div>Score</div>
                 <div>Price</div>
                 <div>OI Change</div>
                 <div>Volume</div>
+                <div>Funding</div>
+                <div>L/S</div>
+                <div>Timeframe</div>
                 <div>Exchange</div>
                 <div>Time (MSK)</div>
             </div>
@@ -557,13 +562,15 @@
                     lsRatio = parseFloat(lsRatio) || 0;
                     
                     return `
-                        <div class="signal-row" onclick="openChart('${symbol}')" style="display: grid; grid-template-columns: 1.2fr 0.8fr 0.6fr 1fr 1fr 1fr 0.8fr 1fr; gap: 10px; padding: 12px; border-bottom: 1px solid #30363d; align-items: center;">
+                        <div class="signal-row" onclick="openChart('${symbol}')" style="display: grid; grid-template-columns: 1fr 0.7fr 1fr 0.9fr 0.6fr 1fr 0.9fr 0.9fr 1fr 0.6fr 0.8fr 0.9fr 1.2fr; gap: 8px; padding: 12px 15px; border-bottom: 1px solid #30363d; align-items: center; font-size: 12px;">
                             <div class="symbol" style="font-weight: 600; color: #58a6ff;">${symbol}</div>
                             <div>
                                 <span class="badge ${isPump ? 'badge-pump' : 'badge-dump'}">
                                     ${signalType}
                                 </span>
                             </div>
+                            <div>${formatStage(stage)}</div>
+                            <div>${formatDirection(bias, signalType)}</div>
                             <div class="score ${scoreClass}">${score}/5</div>
                             <div class="price">$${formatNumber(price)}</div>
                             <div class="change ${oiChange > 0 ? 'change-positive' : 'change-negative'}">
@@ -572,6 +579,9 @@
                             <div class="change ${volumeChange > 0 ? 'change-positive' : 'change-negative'}">
                                 ${volumeChange > 0 ? '+' : ''}${volumeChange.toFixed(1)}%
                             </div>
+                            <div>${formatFunding(fundingRate)}</div>
+                            <div style="font-size: 11px;">${lsRatio ? lsRatio.toFixed(2) : '-'}</div>
+                            <div style="color: #8b949e; font-size: 11px;">${timeframe}</div>
                             <div class="exchange">${exchange}</div>
                             <div class="time">${formatTime(timestamp)}</div>
                         </div>
