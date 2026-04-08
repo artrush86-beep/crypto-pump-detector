@@ -56,15 +56,15 @@ class SignalsAPI:
             # Try Redis first if connected
             if self.use_redis:
                 signals = await redis_store.get_recent_signals(limit=limit, signal_type=signal_type)
-                if signals:
-                    return web.json_response(
-                        {
-                            "signals": signals,
-                            "total": len(signals),
-                            "source": "redis"
-                        },
-                        headers={"Access-Control-Allow-Origin": "*"}
-                    )
+                # Always return from Redis if connected (even if empty)
+                return web.json_response(
+                    {
+                        "signals": signals,
+                        "total": len(signals),
+                        "source": "redis"
+                    },
+                    headers={"Access-Control-Allow-Origin": "*"}
+                )
             
             # Fallback to SQLite database
             signals = await self.db.get_recent_signals(limit=limit, signal_type=signal_type)
