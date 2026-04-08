@@ -200,13 +200,17 @@ class PumpDetectorApp:
         logger.info("Initializing Pump Detector...")
         await self._load_persistent_state()
         
-        # Get market cap data from CoinGecko
-        async with CoinGeckoClient() as cg:
-            logger.info("Fetching market cap data from CoinGecko...")
-            self.market_caps = await cg.get_market_cap_map(
-                min_market_cap=settings.MIN_MARKET_CAP
-            )
-            logger.info(f"Loaded {len(self.market_caps)} coins with market cap >= ${settings.MIN_MARKET_CAP:,.0f}")
+        # Get market cap data from CoinGecko (with fallback)
+        try:
+            async with CoinGeckoClient() as cg:
+                logger.info("Fetching market cap data from CoinGecko...")
+                self.market_caps = await cg.get_market_cap_map(
+                    min_market_cap=settings.MIN_MARKET_CAP
+                )
+                logger.info(f"Loaded {len(self.market_caps)} coins with market cap >= ${settings.MIN_MARKET_CAP:,.0f}")
+        except Exception as e:
+            logger.warning(f"CoinGecko failed (rate limit?), continuing without market cap filter: {e}")
+            self.market_caps = {}
         
         # Get symbols from exchanges
         try:
