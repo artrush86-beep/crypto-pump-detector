@@ -106,7 +106,7 @@ class BybitClient:
             item['symbol'] for item in data.get('list', [])
             if item.get('status') == 'Trading' and item.get('quoteCoin') == 'USDT'
         ]
-        return symbols[:150]
+        return symbols[:200]
     
     async def get_tickers(self, symbol: Optional[str] = None) -> List[Dict]:
         params = {"category": "linear"}
