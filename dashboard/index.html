@@ -435,9 +435,12 @@
         async function fetchSignals() {
             if (!apiUrl) return;
             
+            // Add limit=200 parameter to get more signals
+            const fetchUrl = apiUrl.includes('?') ? `${apiUrl}&limit=200` : `${apiUrl}?limit=200`;
+            
             try {
                 updateStatus('loading');
-                const response = await fetch(apiUrl);
+                const response = await fetch(fetchUrl);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
@@ -509,10 +512,11 @@
         function renderSignals() {
             console.log('Rendering signals:', signalsData);
             
-            let filtered = signalsData;
+            // Filter by score >= 3 first
+            let filtered = signalsData.filter(s => (s.score || 0) >= 3);
             
             if (currentFilter !== 'all') {
-                filtered = signalsData.filter(s => s.signal_type?.toLowerCase() === currentFilter);
+                filtered = filtered.filter(s => s.signal_type?.toLowerCase() === currentFilter);
             }
             
             if (filtered.length === 0) {
