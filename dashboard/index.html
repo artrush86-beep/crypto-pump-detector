@@ -129,30 +129,25 @@
         
         .table-header {
             display: grid;
-            grid-template-columns: 100px 80px 80px 100px 100px 100px 80px 120px;
+            grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1.5fr 1fr 1fr 1.5fr;
             gap: 10px;
-            padding: 15px 20px;
+            padding: 12px 20px;
             background: #21262d;
             border-bottom: 1px solid #30363d;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
-            text-transform: uppercase;
             color: #8b949e;
+            text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         
         .signal-row {
-            display: grid;
-            grid-template-columns: 100px 80px 80px 100px 100px 100px 80px 120px;
-            gap: 10px;
-            padding: 15px 20px;
-            border-bottom: 1px solid #30363d;
-            align-items: center;
+            cursor: pointer;
             transition: background 0.2s;
         }
         
         .signal-row:hover {
-            background: #21262d;
+            background: #1c2128;
         }
         
         .signal-row:last-child {
@@ -377,6 +372,10 @@
                 <div class="stat-value" id="dumpCount" style="color: #f85149;">-</div>
             </div>
             <div class="stat-card">
+                <h3>Scanning Pairs</h3>
+                <div class="stat-value" id="pairsCount" style="color: #58a6ff;">73</div>
+            </div>
+            <div class="stat-card">
                 <h3>Last Update</h3>
                 <div class="stat-value" id="lastUpdate" style="font-size: 18px; margin-top: 8px;">-</div>
             </div>
@@ -392,12 +391,14 @@
             <div class="table-header">
                 <div>Symbol</div>
                 <div>Type</div>
+                <div>Stage</div>
+                <div>Direction</div>
                 <div>Score</div>
                 <div>Price</div>
-                <div>OI Change</div>
-                <div>Volume</div>
-                <div>Exchange</div>
-                <div>Time</div>
+                <div>Funding</div>
+                <div>L/S Ratio</div>
+                <div>Timeframe</div>
+                <div>Time (MSK)</div>
             </div>
             <div id="signalsList">
                 <div class="loading">Enter API URL and click Connect to load signals...</div>
@@ -544,29 +545,34 @@
                     let symbol = signal.symbol ?? '?';
                     let signalType = signal.signal_type ?? '?';
                     let timestamp = signal.timestamp;
+                    let stage = signal.stage ?? 'CONFIRMED';
+                    let bias = signal.bias ?? (isPump ? 'LONG' : 'SHORT');
+                    let fundingRate = signal.funding_rate ?? signal.fundingRate ?? null;
+                    let lsRatio = signal.long_short_ratio ?? signal.longShortRatio ?? null;
+                    let timeframe = signal.timeframe ?? '15m';
+                    let factors = signal.factors ?? signal.details?.factors ?? [];
                     
                     // Ensure numeric values
                     oiChange = parseFloat(oiChange) || 0;
                     volumeChange = parseFloat(volumeChange) || 0;
                     price = parseFloat(price) || 0;
+                    lsRatio = parseFloat(lsRatio) || 0;
                     
                     return `
-                        <div class="signal-row" onclick="openChart('${symbol}')">
-                            <div class="symbol">${symbol}</div>
+                        <div class="signal-row" onclick="openChart('${symbol}')" style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1.5fr 1fr 1fr 1.5fr; gap: 10px; padding: 12px; border-bottom: 1px solid #30363d; align-items: center;">
+                            <div class="symbol" style="font-weight: 600; color: #58a6ff;">${symbol}</div>
                             <div>
                                 <span class="badge ${isPump ? 'badge-pump' : 'badge-dump'}">
                                     ${signalType}
                                 </span>
                             </div>
+                            <div>${formatStage(stage)}</div>
+                            <div>${formatDirection(bias, signalType)}</div>
                             <div class="score ${scoreClass}">${score}/5</div>
                             <div class="price">$${formatNumber(price)}</div>
-                            <div class="change ${oiChange > 0 ? 'change-positive' : 'change-negative'}">
-                                ${oiChange > 0 ? '+' : ''}${oiChange.toFixed(1)}%
-                            </div>
-                            <div class="change ${volumeChange > 0 ? 'change-positive' : 'change-negative'}">
-                                ${volumeChange > 0 ? '+' : ''}${volumeChange.toFixed(1)}%
-                            </div>
-                            <div class="exchange">${exchange}</div>
+                            <div>${formatFunding(fundingRate)}</div>
+                            <div style="font-size: 12px;">${lsRatio ? lsRatio.toFixed(2) : '-'}</div>
+                            <div style="font-size: 12px; color: #8b949e;">${timeframe}</div>
                             <div class="time">${formatTime(timestamp)}</div>
                         </div>
                     `;
@@ -633,11 +639,43 @@
         function formatTime(timestamp) {
             if (!timestamp) return '-';
             const date = new Date(timestamp);
-            return date.toLocaleTimeString('en-US', { 
+            // Add 3 hours for Moscow time (UTC+3)
+            const mskDate = new Date(date.getTime() + 3 * 60 * 60 * 1000);
+            return mskDate.toLocaleTimeString('ru-RU', { 
                 hour: '2-digit', 
                 minute: '2-digit',
+                second: '2-digit',
                 hour12: false 
-            });
+            }) + ' MSK';
+        }
+        
+        function formatFunding(fundingRate) {
+            if (!fundingRate && fundingRate !== 0) return '-';
+            const percent = (fundingRate * 100).toFixed(4);
+            const color = fundingRate < 0 ? '#3fb950' : '#f85149';
+            const direction = fundingRate < 0 ? 'Shorts pay' : 'Longs pay';
+            return `<span style="color: ${color}">${percent}%</span><br><small style="color: #8b949e">${direction}</small>`;
+        }
+        
+        function formatDirection(bias, signalType) {
+            if (!bias) return signalType === 'pump' ? 'LONG' : 'SHORT';
+            const isLong = bias.toUpperCase().includes('LONG') || bias.toUpperCase().includes('PUMP');
+            const color = isLong ? '#3fb950' : '#f85149';
+            const arrow = isLong ? '↑' : '↓';
+            return `<span style="color: ${color}; font-weight: bold;">${arrow} ${bias.toUpperCase()}</span>`;
+        }
+        
+        function formatStage(stage) {
+            if (!stage) return '-';
+            const isEarly = stage.toUpperCase().includes('EARLY');
+            const bg = isEarly ? '#d29922' : '#238636';
+            const text = isEarly ? 'EARLY' : 'CONFIRMED';
+            return `<span style="background: ${bg}; color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">${text}</span>`;
+        }
+        
+        function formatFactors(factors) {
+            if (!factors || !Array.isArray(factors) || factors.length === 0) return '-';
+            return factors.slice(0, 2).map(f => `<div style="font-size: 11px; color: #8b949e; margin: 1px 0;">• ${f}</div>`).join('');
         }
     </script>
 </body>
