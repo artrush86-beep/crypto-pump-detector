@@ -486,8 +486,8 @@
         function updateStats(data) {
             document.getElementById('totalSignals').textContent = data.total || 0;
             
-            const pumps = signalsData.filter(s => s.signal_type === 'pump').length;
-            const dumps = signalsData.filter(s => s.signal_type === 'dump').length;
+            const pumps = signalsData.filter(s => s.signal_type?.toLowerCase() === 'pump').length;
+            const dumps = signalsData.filter(s => s.signal_type?.toLowerCase() === 'dump').length;
             
             document.getElementById('pumpCount').textContent = pumps;
             document.getElementById('dumpCount').textContent = dumps;
@@ -512,7 +512,7 @@
             let filtered = signalsData;
             
             if (currentFilter !== 'all') {
-                filtered = signalsData.filter(s => s.signal_type === currentFilter);
+                filtered = signalsData.filter(s => s.signal_type?.toLowerCase() === currentFilter);
             }
             
             if (filtered.length === 0) {
