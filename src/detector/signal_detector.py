@@ -34,15 +34,15 @@ class SignalScore:
 
     @property
     def bias(self) -> str:
-        return "LONG" if self.signal_type == "PUMP" else "SHORT"
+        return "🟢 LONG" if self.signal_type == "🟢 PUMP 🟢" else "🔴 SHORT"
 
     def to_message(self) -> str:
         """Format signal as Telegram message."""
         header_map = {
-            ("PUMP", "EARLY"): ("🛰️", "РАННИЙ LONG WATCH"),
-            ("DUMP", "EARLY"): ("🛰️", "РАННИЙ SHORT WATCH"),
-            ("PUMP", "CONFIRMED"): ("🚀", "LONG СИГНАЛ"),
-            ("DUMP", "CONFIRMED"): ("🔻", "SHORT СИГНАЛ"),
+            ("PUMP", "EARLY"): ("🛰️", "ВОЗМОЖЕН LONG - НАБЛЮДАЙ"),
+            ("DUMP", "EARLY"): ("🛰️", "ВОЗМОЖЕН SHORT - НАБЛЮДАЙ"),
+            ("PUMP", "CONFIRMED"): ("🚀", "LONG СИГНАЛ - ПОДТВЕРЖДЕННЫЙ"),
+            ("DUMP", "CONFIRMED"): ("🔻", "SHORT СИГНАЛ - ПОДТВЕРЖДЕННЫЙ"),
         }
         confidence_map = {
             "LOW": "⚪",
@@ -54,7 +54,7 @@ class SignalScore:
         stage_emoji, title = header_map.get((self.signal_type, self.stage), ("📡", "SIGNAL"))
         confidence_emoji = confidence_map.get(self.confidence, "⚪")
         funding_emoji = "🟢" if self.funding_rate < 0 else "🔴"
-        funding_text = "Шорты платят" if self.funding_rate < 0 else "Лонги платят"
+        funding_text = "Шорты платят ЛОНГИСТАМ" if self.funding_rate < 0 else "Лонги платят ШОРТИСТАМ"
 
         factor_translations = {
             "OI surge": "Всплеск OI",
@@ -90,7 +90,7 @@ class SignalScore:
 
         message = (
             f"{stage_emoji} <b>{title}</b>\n\n"
-            f"<b>Монета:</b> <code>{self.symbol}</code> ({self.exchange})\n"
+            f"<b>Монета:</b> #<code>{self.symbol}</code> ({self.exchange})\n"
             f"<b>Направление:</b> {self.bias}\n"
             f"<b>Таймфрейм:</b> {self.timeframe}\n"
             f"<b>Скор:</b> {self.score:.1f}/5 {confidence_emoji} {self.confidence}\n"
@@ -100,7 +100,7 @@ class SignalScore:
             f"• Цена: <code>{self.price_change_pct:+.2f}%</code>\n"
             f"• Объём: <code>{self.volume_change_pct:+.1f}%</code>\n"
             f"• Фандинг: <code>{self.funding_rate * 100:.4f}%</code> {funding_emoji} ({funding_text})\n"
-            f"• L/S: <code>{self.long_short_ratio:.2f}</code>\n"
+            f"• Соотношение L/S: <code>{self.long_short_ratio:.2f}</code>\n"
             f"• Время: {self.timestamp.strftime('%H:%M:%S UTC')}\n"
         )
 
