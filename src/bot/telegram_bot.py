@@ -428,7 +428,8 @@ class SignalBot:
                 "volume_change": signal.volume_change_pct,
                 "funding_rate": signal.funding_rate,
                 "long_short_ratio": signal.long_short_ratio,
-                "price": 0,
+                "bias": signal.bias,
+                "price": signal.current_price,
                 "market_cap": 0,
             }
             self.signals_api.add_signal(signal_data)
