@@ -609,25 +609,16 @@
             const widgetContainer = document.getElementById('tradingview-widget');
             widgetContainer.innerHTML = '';
             
-            // TradingView symbol format - use spot symbol (more compatible)
+            // TradingView Advanced Chart via iframe (most reliable)
             const tvSymbol = `BINANCE:${symbol}`;
+            const iframe = document.createElement('iframe');
+            iframe.src = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol)}&interval=15&theme=dark`;
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+            iframe.style.background = '#131722';
             
-            setTimeout(() => {
-                new TradingView.widget({
-                    container: 'tradingview-widget',
-                    symbol: tvSymbol,
-                    interval: '15',
-                    timezone: 'Europe/Moscow',
-                    theme: 'dark',
-                    style: '1',
-                    locale: 'en',
-                    toolbar_bg: '#161b22',
-                    enable_publishing: false,
-                    allow_symbol_change: false,
-                    save_image: false,
-                    autosize: true
-                });
-            }, 100);
+            widgetContainer.appendChild(iframe);
         }
         
         function closeChart() {
