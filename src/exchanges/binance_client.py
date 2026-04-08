@@ -100,7 +100,7 @@ class BinanceClient:
             if s['status'] == 'TRADING' and s['contractType'] == 'PERPETUAL'
             and s['symbol'].endswith('USDT')
         ]
-        return symbols[:150]
+        return symbols[:200]
     
     async def get_all_tickers(self) -> List[Dict]:
         return await self._request("/fapi/v1/ticker/24hr")
