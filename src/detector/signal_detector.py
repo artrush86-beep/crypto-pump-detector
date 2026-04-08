@@ -328,6 +328,7 @@ class SignalDetector:
         volume_change: float,
         funding_rate: float,
         long_short_ratio: float,
+        current_price: float,
         timestamp: datetime,
     ) -> Optional[SignalScore]:
         if not settings.ENABLE_EARLY_SIGNALS:
@@ -392,6 +393,7 @@ class SignalDetector:
             long_short_ratio=long_short_ratio if long_short_ratio > 0 else 1.0,
             signal_type=signal_type,
             confidence=self._confidence(score),
+            current_price=current_price,
             stage="EARLY",
             details={"factors": factors},
             timestamp=timestamp,
@@ -484,6 +486,7 @@ class SignalDetector:
                     volume_change=volume_change,
                     funding_rate=funding_rate,
                     long_short_ratio=long_short_ratio,
+                    current_price=current_price,
                     timestamp=now,
                 )
                 if early_signal:
