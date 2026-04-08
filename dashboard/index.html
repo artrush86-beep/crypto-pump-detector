@@ -609,25 +609,25 @@
             const widgetContainer = document.getElementById('tradingview-widget');
             widgetContainer.innerHTML = '';
             
-            // TradingView symbol format for Binance perpetuals
-            const tvSymbol = `BINANCE:${symbol}.P`;
+            // TradingView symbol format - use spot symbol (more compatible)
+            const tvSymbol = `BINANCE:${symbol}`;
             
-            new TradingView.widget({
-                container: 'tradingview-widget',
-                symbol: tvSymbol,
-                interval: '15',
-                timezone: 'Europe/Moscow',
-                theme: 'dark',
-                style: '1',
-                locale: 'ru',
-                toolbar_bg: '#161b22',
-                enable_publishing: false,
-                hide_top_toolbar: false,
-                hide_legend: false,
-                save_image: false,
-                height: '100%',
-                width: '100%'
-            });
+            setTimeout(() => {
+                new TradingView.widget({
+                    container: 'tradingview-widget',
+                    symbol: tvSymbol,
+                    interval: '15',
+                    timezone: 'Europe/Moscow',
+                    theme: 'dark',
+                    style: '1',
+                    locale: 'en',
+                    toolbar_bg: '#161b22',
+                    enable_publishing: false,
+                    allow_symbol_change: false,
+                    save_image: false,
+                    autosize: true
+                });
+            }, 100);
         }
         
         function closeChart() {
