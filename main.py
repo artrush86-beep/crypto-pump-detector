@@ -291,7 +291,9 @@ class PumpDetectorApp:
                 )
                 
                 if signals:
-                    logger.info(f"Detected {len(signals)} signals from {exchange_name} ({timeframe})")
+                    logger.info(f"✅ Detected {len(signals)} signals from {exchange_name} ({timeframe})")
+                    for sig in signals:
+                        logger.info(f"  -> Signal: {sig.symbol} | Score: {sig.score}/5 | Type: {sig.signal_type}")
                     
                     # Add timeframe to each signal
                     for signal in signals:
@@ -299,14 +301,10 @@ class PumpDetectorApp:
                     
                     # Filter ignored symbols and deduplicate
                     filtered_signals = [
-                        signal for signal in all_signals
+                        signal for signal in signals
                         if signal.symbol not in self.state.get("ignored_symbols", set())
                     ]
-                    
-                    # Log signal processing
-                    logger.info(f"All signals generated: {len(all_signals)} (filtered: {len(filtered_signals)})")
-                    for sig in filtered_signals:
-                        logger.info(f"Signal ready: {sig.symbol} {sig.exchange} | Score: {sig.score}/5 | Confidence: {sig.confidence}")
+                    logger.info(f"📊 After filtering: {len(filtered_signals)} signals ready for Telegram")
                     
                     # Send to Telegram
                     if bot and filtered_signals:
@@ -314,10 +312,8 @@ class PumpDetectorApp:
                         await bot.send_signals_batch(filtered_signals)
                     elif not filtered_signals:
                         logger.info("No signals to send after filtering")
-                        await bot.send_signals_batch(filtered_signals)
-                        self.stats['signals_count'] += len(filtered_signals)
-                        self.stats['early_signals_count'] += len([s for s in filtered_signals if s.stage == "EARLY - подготовка (предупреждение)"])
-                        self.stats['confirmed_signals_count'] += len([s for s in filtered_signals if s.stage == "CONFIRMED - подтверждение направления"])
+                else:
+                    logger.info(f"❌ No signals detected for {exchange_name} ({timeframe})")
             
             # Check price alerts
             await self._check_price_alerts(exchange_name, data, bot)
