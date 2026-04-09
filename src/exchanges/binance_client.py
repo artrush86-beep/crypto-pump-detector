@@ -31,11 +31,11 @@ class MarketData:
     price_change_24h: float
     timestamp: datetime
     # NEW fields — default None so existing code won't break
-    top_trader_ls_ratio: Optional[float] = None   # Top traders (smarter money)
-    taker_buy_ratio: Optional[float] = None        # 0–1: >0.6 = aggressive buying
-    recent_liquidations_usd: Optional[float] = None  # USD liquidated last 15m
-    liq_side: Optional[str] = None                  # 'SHORT' or 'LONG' dominated
-    oi_trend: Optional[str] = None                  # 'growing'|'shrinking'|'flat'
+    top_trader_long_short_ratio: Optional[float] = None   # Top traders (smarter money)
+    taker_buy_sell_ratio: Optional[float] = None         # 0–1: >0.6 = aggressive buying
+    recent_liquidations_usd: Optional[float] = None      # USD liquidated last 15m
+    liq_side: Optional[str] = None                       # 'SHORT' or 'LONG' dominated
+    oi_trend: Optional[str] = None                       # 'growing'|'shrinking'|'flat'
 
 
 class BinanceClient:
