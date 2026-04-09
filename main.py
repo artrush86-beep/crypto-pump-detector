@@ -87,6 +87,11 @@ class PumpDetectorApp:
 
     def _select_top_symbols(self, symbols: List[str]) -> List[str]:
         """Select a stable top-N list ordered by market cap."""
+        # If market_caps is empty (CoinGecko failed), skip market cap filtering
+        if not self.market_caps:
+            logger.warning("No market cap data available, selecting top symbols without market cap filter")
+            return sorted(symbols)[:settings.TOP_N_SYMBOLS]
+        
         filtered = [
             symbol for symbol in symbols
             if self.market_caps.get(self._base_symbol(symbol), 0) >= settings.MIN_MARKET_CAP
