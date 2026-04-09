@@ -129,7 +129,7 @@
         
         .table-header {
             display: grid;
-            grid-template-columns: 1fr 0.7fr 1fr 0.9fr 0.6fr 1fr 0.9fr 0.9fr 1fr 0.6fr 0.5fr 1.1fr 0.9fr 1.2fr;
+            grid-template-columns: 1fr 0.7fr 1fr 0.9fr 0.6fr 1fr 0.9fr 0.9fr 1fr 0.6fr 0.5fr 0.6fr 1.5fr 0.9fr 1.2fr;
             gap: 8px;
             padding: 12px 15px;
             background: #21262d;
@@ -404,7 +404,8 @@
                 <div>Funding</div>
                 <div>L/S</div>
                 <div>TF</div>
-                <div>Сигналы</div>
+                <div>Conf</div>
+                <div>Factors</div>
                 <div>Exchange</div>
                 <div>Time (MSK)</div>
             </div>
@@ -607,7 +608,7 @@
                     const tvUrl = `https://www.tradingview.com/chart/?symbol=${tvExchange}:${symbol}.P&interval=${tvInterval}`;
 
                     return `
-                        <div class="signal-row" style="display: grid; grid-template-columns: 1fr 0.7fr 1fr 0.9fr 0.6fr 1fr 0.9fr 0.9fr 1fr 0.6fr 0.5fr 1.1fr 0.9fr 1.2fr; gap: 8px; padding: 12px 15px; border-bottom: 1px solid #30363d; align-items: center; font-size: 12px;">
+                        <div class="signal-row" style="display: grid; grid-template-columns: 1fr 0.7fr 1fr 0.9fr 0.6fr 1fr 0.9fr 0.9fr 1fr 0.6fr 0.5fr 0.6fr 1.5fr 0.9fr 1.2fr; gap: 8px; padding: 12px 15px; border-bottom: 1px solid #30363d; align-items: center; font-size: 12px;">
                             <div class="symbol" onclick="openChart('${symbol}')" style="font-weight: 600; color: #58a6ff; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;" title="Открыть график">${symbol}${isTrending ? '<span style=\"font-size:10px;margin-left:3px;\" title=\"CoinGecko trending\">🔥</span>' : ''}</div>
                             <div>
                                 <span class="badge ${isPump ? 'badge-pump' : 'badge-dump'}">
@@ -627,7 +628,8 @@
                             <div>${formatFunding(fundingRate)}</div>
                             <div style="font-size: 11px;">${lsRatio ? lsRatio.toFixed(2) : '-'}</div>
                             <div style="color: #8b949e; font-size: 11px;">${timeframe}</div>
-                            <div style="font-size:11px;line-height:1.8;">${formatSignalBadges(oiTrend, takerRatio, liqUsd, liqSide, topTraderLs, lsRatio, isPump)}</div>
+                            <div style="font-size: 11px; color: ${confidence === 'high' ? '#3fb950' : confidence === 'medium' ? '#d29922' : '#8b949e'};">${confidence ? confidence.charAt(0).toUpperCase() + confidence.slice(1) : '-'}</div>
+                            <div style="font-size: 10px; color: #8b949e; line-height: 1.4; max-height: 40px; overflow: hidden; text-overflow: ellipsis;" title="${factors ? factors.join(' | ') : ''}">${factors ? factors.slice(0, 2).join(' | ') : '-'}</div>
                             <div class="exchange" onclick="window.open('${tvUrl}', '_blank')" style="cursor: pointer; color: #58a6ff; text-decoration: underline dotted; text-underline-offset: 3px;" title="Открыть в TradingView (${timeframe})">${exchange} ↗</div>
                             <div class="time">${formatTime(timestamp)}</div>
                         </div>
@@ -836,6 +838,15 @@
         function formatFactors(factors) {
             if (!factors || !Array.isArray(factors) || factors.length === 0) return '-';
             return factors.slice(0, 2).map(f => `<div style="font-size: 11px; color: #8b949e; margin: 1px 0;">• ${f}</div>`).join('');
+        }
+        
+        function formatFactorsShort(factors) {
+            if (!factors || !Array.isArray(factors) || factors.length === 0) return '-';
+            // Truncate long factors to fit in table cell
+            return factors.slice(0, 2).map(f => {
+                const short = f.length > 25 ? f.substring(0, 25) + '...' : f;
+                return short;
+            }).join(' | ');
         }
     </script>
 </body>
