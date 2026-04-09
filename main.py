@@ -297,18 +297,11 @@ class PumpDetectorApp:
                     for signal in signals:
                         signal.timeframe = timeframe
                     
-                    # Filter ignored symbols, save to DB, then notify
-                    filtered_signals = []
-                    for signal in signals:
-                        if signal.symbol in self.ignored_symbols:
-                            logger.info("Ignored signal skipped: %s", signal.symbol)
-                            continue
-                        filtered_signals.append(signal)
-                        await self.db.save_signal({
-                            'symbol': signal.symbol,
-                            'exchange': signal.exchange,
-                            'signal_type': signal.signal_type,
-                            'score': signal.score,
+                    # Filter ignored symbols and deduplicate
+                    filtered_signals = [
+                        signal for signal in signals
+                        if signal.symbol not in self.ignored_symbols
+                    ]
                             'price': getattr(data.get(signal.symbol), 'price', 0),
                             'price_change': signal.price_change_pct,
                             'oi_change': signal.oi_change_pct,
