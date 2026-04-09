@@ -181,11 +181,12 @@ class SignalsAPI:
         """Return scanning pairs configuration."""
         return web.json_response(
             {
-                "total_pairs": 73,
-                "binance_pairs": 61,
-                "bybit_pairs": 29,
+                "total_pairs": 400,
+                "binance_pairs": 200,
+                "bybit_pairs": 200,
                 "exchanges": ["binance", "bybit"],
-                "top_coins": 249
+                "top_coins": 400,
+                "note": "Scanning 200 pairs from each exchange independently"
             },
             headers={"Access-Control-Allow-Origin": "*"}
         )
