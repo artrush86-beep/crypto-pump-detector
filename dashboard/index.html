@@ -386,28 +386,28 @@
         </div>
         
         <div class="filters">
-            <button class="filter-btn active" onclick="filterSignals('all')">All Signals</button>
-            <button class="filter-btn" onclick="filterSignals('pump')">Pumps Only</button>
-            <button class="filter-btn" onclick="filterSignals('dump')">Dumps Only</button>
+            <button class="filter-btn active" onclick="filterSignals('all')">Все сигналы</button>
+            <button class="filter-btn" onclick="filterSignals('pump')">Только пампы</button>
+            <button class="filter-btn" onclick="filterSignals('dump')">Только дампы</button>
         </div>
         
         <div class="signals-table">
             <div class="table-header">
-                <div>Symbol</div>
-                <div>Type</div>
-                <div>Stage</div>
-                <div>Direction</div>
-                <div>Score</div>
-                <div>Price</div>
-                <div>OI Change</div>
-                <div>Volume</div>
-                <div>Funding</div>
-                <div>L/S</div>
-                <div>TF</div>
-                <div>Conf</div>
-                <div>Factors</div>
-                <div>Exchange</div>
-                <div>Time (MSK)</div>
+                    <div class="col-symbol">МОНЕТА</div>
+                    <div class="col-type">ТИП</div>
+                    <div class="col-stage">ГОТОВНОСТЬ</div>
+                    <div class="col-direction">КУДА</div>
+                    <div class="col-score">ОЧКИ</div>
+                    <div class="col-price">ЦЕНА</div>
+                    <div class="col-oi">OI</div>
+                    <div class="col-volume">ОБЪЁМ</div>
+                    <div class="col-funding">ФАНДИНГ</div>
+                    <div class="col-ls">L/S</div>
+                    <div class="col-tf">ТФ</div>
+                    <div class="col-signals">УВЕР</div>
+                    <div class="col-factors">ФАКТОРЫ</div>
+                    <div class="col-exchange">БИРЖА</div>
+                    <div class="col-time">ВРЕМЯ (МСК)</div>
             </div>
             <div id="signalsList">
                 <div class="loading">Enter API URL and click Connect to load signals...</div>
@@ -596,6 +596,7 @@
                     let liqSide = signal.liq_side ?? null;
                     let topTraderLs = signal.top_trader_ls_ratio != null ? parseFloat(signal.top_trader_ls_ratio) : null;
                     let isTrending = signal.is_trending ?? false;
+                    let confidence = signal.confidence ?? 'LOW';
                     
                     // Ensure numeric values
                     oiChange = parseFloat(oiChange) || 0;
