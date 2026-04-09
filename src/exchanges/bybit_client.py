@@ -151,7 +151,7 @@ class BybitClient:
             data = await self._request("/v5/market/account-ratio", {
                 "category": "linear", 
                 "symbol": symbol,
-                "periodTime": bybit_period,  # Correct parameter name
+                "period": period,  # Use period (e.g., "15min") not periodTime
                 "limit": 2
             })
             return data.get('list', [])
