@@ -236,6 +236,10 @@ class SignalDetector:
         funding_rate: float,
         long_short_ratio: float,
         timestamp: datetime,
+        taker_buy_ratio: Optional[float] = None,
+        liq_usd: Optional[float] = None,
+        liq_side: Optional[str] = None,
+        top_trader_ls: Optional[float] = None,
     ) -> Optional[SignalScore]:
         score = 0.0
         factors: List[str] = []
@@ -314,7 +318,14 @@ class SignalDetector:
             confidence=self._confidence(score),
             current_price=current_price,
             stage="CONFIRMED",
-            details={"factors": factors},
+            details={
+                "factors": factors,
+                "oi_trend": "up" if oi_change > 0 else "down" if oi_change < 0 else "flat",
+                "taker_buy_ratio": None,
+                "recent_liquidations_usd": None,
+                "liq_side": None,
+                "top_trader_ls_ratio": None,
+            },
             timestamp=timestamp,
         )
 
@@ -395,7 +406,14 @@ class SignalDetector:
             confidence=self._confidence(score),
             current_price=current_price,
             stage="EARLY",
-            details={"factors": factors},
+            details={
+                "factors": factors,
+                "oi_trend": "up" if oi_change > 0 else "down" if oi_change < 0 else "flat",
+                "taker_buy_ratio": None,
+                "recent_liquidations_usd": None,
+                "liq_side": None,
+                "top_trader_ls_ratio": None,
+            },
             timestamp=timestamp,
         )
 
@@ -449,6 +467,12 @@ class SignalDetector:
                 )
                 funding_rate = getattr(market_data, "funding_rate", 0.0)
                 long_short_ratio = getattr(market_data, "long_short_ratio", 1.0) or 1.0
+                
+                # Extended market data (for detailed signal analysis)
+                taker_buy_ratio = getattr(market_data, "taker_buy_sell_ratio", None)
+                liq_usd = getattr(market_data, "recent_liquidations_usd", None)
+                liq_side = getattr(market_data, "liq_side", None)
+                top_trader_ls = getattr(market_data, "top_trader_long_short_ratio", None)
 
                 signal_type = self._direction_from_pressure(
                     price_change=price_change,
@@ -466,6 +490,10 @@ class SignalDetector:
                     funding_rate=funding_rate,
                     long_short_ratio=long_short_ratio,
                     timestamp=now,
+                    taker_buy_ratio=taker_buy_ratio,
+                    liq_usd=liq_usd,
+                    liq_side=liq_side,
+                    top_trader_ls=top_trader_ls,
                 )
                 if confirmed_signal:
                     signals.append(confirmed_signal)
@@ -488,6 +516,10 @@ class SignalDetector:
                     long_short_ratio=long_short_ratio,
                     current_price=current_price,
                     timestamp=now,
+                    taker_buy_ratio=taker_buy_ratio,
+                    liq_usd=liq_usd,
+                    liq_side=liq_side,
+                    top_trader_ls=top_trader_ls,
                 )
                 if early_signal:
                     signals.append(early_signal)
