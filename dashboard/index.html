@@ -418,7 +418,7 @@
         
         if (apiUrl) {
             fetchSignals();
-            setInterval(fetchSignals, 60000); // Auto-refresh every 30s
+            setInterval(fetchSignals, 30000); // Auto-refresh every 30s
         }
         
         function saveConfig() {
@@ -435,10 +435,12 @@
         async function fetchSignals() {
             if (!apiUrl) return;
             
+            // Add limit=200 parameter to get more signals
+            const fetchUrl = apiUrl.includes('?') ? `${apiUrl}&limit=200` : `${apiUrl}?limit=200`;
+            
             try {
                 updateStatus('loading');
-                const url = apiUrl.includes('?') ? `${apiUrl}&limit=200` : `${apiUrl}?limit=200`;
-                const response = await fetch(url);
+                const response = await fetch(fetchUrl);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
@@ -485,11 +487,10 @@
         }
         
         function updateStats(data) {
-            const highScoreSignals = signalsData.filter(s => (parseFloat(s.score) || 0) >= 3);
-            document.getElementById('totalSignals').textContent = highScoreSignals.length;
+            document.getElementById('totalSignals').textContent = data.total || 0;
             
-            const pumps = highScoreSignals.filter(s => s.signal_type?.toLowerCase() === 'pump').length;
-            const dumps = highScoreSignals.filter(s => s.signal_type?.toLowerCase() === 'dump').length;
+            const pumps = signalsData.filter(s => s.signal_type?.toLowerCase() === 'pump').length;
+            const dumps = signalsData.filter(s => s.signal_type?.toLowerCase() === 'dump').length;
             
             document.getElementById('pumpCount').textContent = pumps;
             document.getElementById('dumpCount').textContent = dumps;
@@ -511,8 +512,8 @@
         function renderSignals() {
             console.log('Rendering signals:', signalsData);
             
-            // Only show signals with score >= 3
-            let filtered = signalsData.filter(s => (parseFloat(s.score) || 0) >= 3);
+            // Filter by score >= 3 first
+            let filtered = signalsData.filter(s => (s.score || 0) >= 3);
             
             if (currentFilter !== 'all') {
                 filtered = filtered.filter(s => s.signal_type?.toLowerCase() === currentFilter);
@@ -772,7 +773,7 @@
             };
             return map[tf] || '15';
         }
-        
+
         function formatFactors(factors) {
             if (!factors || !Array.isArray(factors) || factors.length === 0) return '-';
             return factors.slice(0, 2).map(f => `<div style="font-size: 11px; color: #8b949e; margin: 1px 0;">• ${f}</div>`).join('');
