@@ -398,22 +398,16 @@ class BinanceClient:
             funding = await self.get_funding_rate(symbol)
             ls_ratio = await self.get_long_short_ratio(symbol)
             
-            # NEW: extra signals (run concurrently to save time)
-            top_ls_task = self.get_top_trader_ls_ratio(symbol, "15m")
-            taker_task = self.get_taker_buy_sell_ratio(symbol, "15m")
-            liq_task = self.get_recent_liquidations(symbol, limit=20)
-
-            top_ls, taker_ratio, liqs = await asyncio.gather(
-                top_ls_task, taker_task, liq_task,
-                return_exceptions=True
-            )
+            # Extended fields (optional, may be None)
+            top_trader_long_short_ratio = await self.get_top_trader_ls_ratio(symbol)
+            taker_ratio = await self.get_taker_buy_sell_ratio(symbol)
+            liqs = await self.get_recent_liquidations(symbol, limit=20)
+            liq_usd, liq_side = self.analyze_liquidations(liqs)
 
             # Safely unpack (gather returns exceptions as values)
-            top_ls = top_ls if isinstance(top_ls, float) else None
+            top_trader_long_short_ratio = top_trader_long_short_ratio if isinstance(top_trader_long_short_ratio, float) else None
             taker_ratio = taker_ratio if isinstance(taker_ratio, float) else None
             liqs = liqs if isinstance(liqs, list) else []
-
-            liq_usd, liq_side = self.analyze_liquidations(liqs)
 
             # OI trend from existing hist
             oi_trend = 'flat'
@@ -440,10 +434,10 @@ class BinanceClient:
                 price_change_24h=float(ticker['priceChangePercent']),
                 timestamp=datetime.utcnow(),
                 # NEW fields
-                top_trader_ls_ratio=top_ls,
-                taker_buy_ratio=taker_ratio,
-                recent_liquidations_usd=liq_usd if liq_usd > 0 else None,
-                liq_side=liq_side if liq_side != 'NONE' else None,
+                top_trader_long_short_ratio=top_trader_long_short_ratio,
+                taker_buy_sell_ratio=taker_ratio,
+                recent_liquidations_usd=liq_usd,
+                liq_side=liq_side,
                 oi_trend=oi_trend,
             )
         except Exception as e:
