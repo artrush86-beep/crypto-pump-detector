@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     MIN_MARKET_CAP: float = 200_000
     
     # Time intervals (seconds)
-    SCAN_INTERVAL: int = 300
+    SCAN_INTERVAL: int = 180
     PRICE_CHECK_INTERVAL: int = 60
     LOOKBACK_WINDOW: int = 900
     
