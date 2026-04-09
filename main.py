@@ -407,9 +407,12 @@ class PumpDetectorApp:
 
                 start_time = time.time()
                 
-                # Scan both exchanges
+                # Scan both exchanges - continue even if one fails
                 for idx, exchange_name in enumerate(settings.EXCHANGES):
-                    await self.scan_exchange(exchange_name, bot)
+                    try:
+                        await self.scan_exchange(exchange_name, bot)
+                    except Exception as e:
+                        logger.error(f"Failed to scan {exchange_name}: {e}. Continuing with other exchanges.")
                     if idx < len(settings.EXCHANGES) - 1:
                         await asyncio.sleep(2)
                 
