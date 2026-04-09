@@ -142,6 +142,13 @@
             text-align: center;
         }
         
+        .table-header > div {
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
         .signal-row {
             cursor: pointer;
             transition: background 0.2s;
@@ -345,7 +352,7 @@
             <div class="status-dot" id="statusDot"></div>
             <span id="statusText">Connecting...</span>
             <span style="margin-left: 15px; color: #484f58;">|</span>
-            <span style="margin-left: 15px;">Auto-refresh: 30s</span>
+            <span style="margin-left: 15px;">Auto-refresh: 90s</span>
         </div>
     </div>
     
@@ -426,7 +433,7 @@
         
         if (apiUrl) {
             fetchSignals();
-            refreshInterval = setInterval(fetchSignals, 60000); // Auto-refresh every 60s
+            refreshInterval = setInterval(fetchSignals, 90000); // Auto-refresh every 90s
         }
         
         function saveConfig() {
