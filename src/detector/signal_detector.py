@@ -438,9 +438,13 @@ class SignalDetector:
     ) -> List[SignalScore]:
         """Process batch of market data and generate signals."""
         signals: List[SignalScore] = []
+        processed_count = 0
+        
+        logger.info(f"🔍 Detector starting for {exchange}: {len(data)} symbols to check")
 
         for symbol, market_data in data.items():
             try:
+                processed_count += 1
                 base_symbol = symbol.replace("USDT", "").replace("USD", "")
                 market_cap = market_caps.get(base_symbol, 0)
                 if market_cap < settings.MIN_MARKET_CAP:
@@ -536,5 +540,13 @@ class SignalDetector:
             except Exception as exc:
                 logger.error("Error processing %s on %s: %s", symbol, exchange, exc)
                 continue
+        
+        # Summary log
+        if signals:
+            logger.info(f"✅ {exchange}: Detected {len(signals)} signals from {processed_count} processed symbols")
+            for sig in signals[:5]:  # Log first 5 signals only
+                logger.info(f"   -> {sig.symbol}: {sig.signal_type} score={sig.score}/5")
+        else:
+            logger.info(f"❌ {exchange}: No signals detected from {processed_count} processed symbols")
 
         return signals
