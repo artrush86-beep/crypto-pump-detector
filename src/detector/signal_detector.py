@@ -341,6 +341,10 @@ class SignalDetector:
         long_short_ratio: float,
         current_price: float,
         timestamp: datetime,
+        taker_buy_ratio: Optional[float] = None,
+        liq_usd: Optional[float] = None,
+        liq_side: Optional[str] = None,
+        top_trader_ls: Optional[float] = None,
     ) -> Optional[SignalScore]:
         if not settings.ENABLE_EARLY_SIGNALS:
             return None
@@ -409,10 +413,10 @@ class SignalDetector:
             details={
                 "factors": factors,
                 "oi_trend": "up" if oi_change > 0 else "down" if oi_change < 0 else "flat",
-                "taker_buy_ratio": None,
-                "recent_liquidations_usd": None,
-                "liq_side": None,
-                "top_trader_ls_ratio": None,
+                "taker_buy_ratio": taker_buy_ratio,
+                "recent_liquidations_usd": liq_usd,
+                "liq_side": liq_side,
+                "top_trader_ls_ratio": top_trader_ls,
             },
             timestamp=timestamp,
         )
