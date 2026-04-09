@@ -299,22 +299,21 @@ class PumpDetectorApp:
                     
                     # Filter ignored symbols and deduplicate
                     filtered_signals = [
-                        signal for signal in signals
-                        if signal.symbol not in self.ignored_symbols
+                        signal for signal in all_signals
+                        if signal.symbol not in self.state.get("ignored_symbols", set())
                     ]
-                            'price': getattr(data.get(signal.symbol), 'price', 0),
-                            'price_change': signal.price_change_pct,
-                            'oi_change': signal.oi_change_pct,
-                            'volume_change': signal.volume_change_pct,
-                            'funding_rate': signal.funding_rate,
-                            'long_short_ratio': signal.long_short_ratio,
-                            'factors': signal.details.get('factors', []),
-                            'timeframe': signal.timeframe,
-                            'stage': signal.stage,
-                            'timestamp': signal.timestamp.isoformat()
-                        })
                     
-                    if filtered_signals:
+                    # Log signal processing
+                    logger.info(f"All signals generated: {len(all_signals)} (filtered: {len(filtered_signals)})")
+                    for sig in filtered_signals:
+                        logger.info(f"Signal ready: {sig.symbol} {sig.exchange} | Score: {sig.score}/5 | Confidence: {sig.confidence}")
+                    
+                    # Send to Telegram
+                    if bot and filtered_signals:
+                        logger.info(f"Sending {len(filtered_signals)} signals to Telegram")
+                        await bot.send_signals_batch(filtered_signals)
+                    elif not filtered_signals:
+                        logger.info("No signals to send after filtering")
                         await bot.send_signals_batch(filtered_signals)
                         self.stats['signals_count'] += len(filtered_signals)
                         self.stats['early_signals_count'] += len([s for s in filtered_signals if s.stage == "EARLY - подготовка (предупреждение)"])
