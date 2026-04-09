@@ -372,8 +372,12 @@
                 <div class="stat-value" id="dumpCount" style="color: #f85149;">-</div>
             </div>
             <div class="stat-card">
-                <h3>Scanning Pairs</h3>
-                <div class="stat-value" id="pairsCount" style="color: #58a6ff;">73</div>
+                <h3>Binance Pairs</h3>
+                <div class="stat-value" id="binancePairs" style="color: #f0b90b;">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Bybit Pairs</h3>
+                <div class="stat-value" id="bybitPairs" style="color: #00c853;">-</div>
             </div>
             <div class="stat-card">
                 <h3>Last Update</h3>
@@ -438,8 +442,29 @@
             refreshInterval = setInterval(fetchSignals, 30000);
         }
         
+        async function fetchPairs() {
+            if (!apiUrl) return;
+            
+            try {
+                const pairsUrl = apiUrl.replace('/signals', '/pairs');
+                const response = await fetch(pairsUrl);
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('binancePairs').textContent = data.binance_pairs || 200;
+                    document.getElementById('bybitPairs').textContent = data.bybit_pairs || 200;
+                }
+            } catch (e) {
+                console.log('Pairs endpoint not available, using defaults');
+                document.getElementById('binancePairs').textContent = '200';
+                document.getElementById('bybitPairs').textContent = '200';
+            }
+        }
+        
         async function fetchSignals() {
             if (!apiUrl) return;
+            
+            // Fetch pairs info first
+            await fetchPairs();
             
             try {
                 updateStatus('loading');
