@@ -439,7 +439,7 @@
             try {
                 updateStatus('loading');
                 const url = apiUrl.includes('?') ? `${apiUrl}&limit=200` : `${apiUrl}?limit=200`;
-                const response = await fetch(apiUrl);
+                const response = await fetch(url);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
@@ -558,7 +558,7 @@
                     let lsRatio = signal.long_short_ratio ?? signal.longShortRatio ?? null;
                     let timeframe = signal.timeframe ?? '15m';
                     let factors = signal.factors ?? signal.details?.factors ?? [];
-                    // New metrics from upgraded clients
+                    // New metrics
                     let oiTrend = signal.oi_trend ?? null;
                     let takerRatio = signal.taker_buy_ratio != null ? parseFloat(signal.taker_buy_ratio) : null;
                     let liqUsd = signal.recent_liquidations_usd != null ? parseFloat(signal.recent_liquidations_usd) : null;
@@ -578,7 +578,7 @@
 
                     return `
                         <div class="signal-row" style="display: grid; grid-template-columns: 1fr 0.7fr 1fr 0.9fr 0.6fr 1fr 0.9fr 0.9fr 1fr 0.6fr 0.5fr 1.1fr 0.9fr 1.2fr; gap: 8px; padding: 12px 15px; border-bottom: 1px solid #30363d; align-items: center; font-size: 12px;">
-                            <div class="symbol" onclick="openChart('${symbol}')" style="font-weight: 600; color: #58a6ff; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;" title="Открыть график">${symbol}${isTrending ? '<span style="font-size:10px;margin-left:3px;" title="CoinGecko trending">🔥</span>' : ''}</div>
+                            <div class="symbol" onclick="openChart('${symbol}')" style="font-weight: 600; color: #58a6ff; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px;" title="Открыть график">${symbol}${isTrending ? '<span style=\"font-size:10px;margin-left:3px;\" title=\"CoinGecko trending\">🔥</span>' : ''}</div>
                             <div>
                                 <span class="badge ${isPump ? 'badge-pump' : 'badge-dump'}">
                                     ${signalType}
@@ -586,7 +586,7 @@
                             </div>
                             <div>${formatStage(stage)}</div>
                             <div>${formatDirection(bias, signalType)}</div>
-                            <div class="score ${scoreClass}" title="${factors.length ? factors.join('\n') : 'Нет факторов'}" style="cursor:help;">${score}/5${factors.length ? '<span style="font-size:9px;color:#8b949e;margin-left:2px;" title="${factors.join('\n')}">ⓘ</span>' : ''}</div>
+                            <div class="score ${scoreClass}" title="${factors.length ? factors.join('\\n') : ''}" style="cursor:${factors.length ? 'help' : 'default'};">${score}/5${factors.length ? '<span style=\"font-size:9px;color:#8b949e;margin-left:2px;\">ⓘ</span>' : ''}</div>
                             <div class="price">$${formatNumber(price)}</div>
                             <div class="change ${oiChange > 0 ? 'change-positive' : 'change-negative'}">
                                 ${oiChange > 0 ? '+' : ''}${oiChange.toFixed(1)}%
@@ -597,7 +597,7 @@
                             <div>${formatFunding(fundingRate)}</div>
                             <div style="font-size: 11px;">${lsRatio ? lsRatio.toFixed(2) : '-'}</div>
                             <div style="color: #8b949e; font-size: 11px;">${timeframe}</div>
-                            <div style="font-size:11px;line-height:1.6;">${formatSignalBadges(oiTrend, takerRatio, liqUsd, liqSide, topTraderLs, lsRatio, isPump)}</div>
+                            <div style="font-size:11px;line-height:1.8;">${formatSignalBadges(oiTrend, takerRatio, liqUsd, liqSide, topTraderLs, lsRatio, isPump)}</div>
                             <div class="exchange" onclick="window.open('${tvUrl}', '_blank')" style="cursor: pointer; color: #58a6ff; text-decoration: underline dotted; text-underline-offset: 3px;" title="Открыть в TradingView (${timeframe})">${exchange} ↗</div>
                             <div class="time">${formatTime(timestamp)}</div>
                         </div>
@@ -785,7 +785,7 @@
         function formatSignalBadges(oiTrend, takerRatio, liqUsd, liqSide, topTraderLs, globalLs, isPump) {
             const badges = [];
 
-            // OI trend arrow
+            // OI trend
             if (oiTrend === 'growing') {
                 badges.push('<span style="color:#3fb950;" title="OI стабильно растёт">↑OI</span>');
             } else if (oiTrend === 'shrinking') {
@@ -795,9 +795,9 @@
             // Taker buy/sell ratio
             if (takerRatio != null) {
                 if (takerRatio > 1.5) {
-                    badges.push(`<span style="color:#3fb950;" title="Агрессивные покупки: ${takerRatio.toFixed(2)}">📈${takerRatio.toFixed(1)}</span>`);
+                    badges.push('<span style="color:#3fb950;" title="Агрессивные покупки: ' + takerRatio.toFixed(2) + '">📈' + takerRatio.toFixed(1) + '</span>');
                 } else if (takerRatio < 0.67) {
-                    badges.push(`<span style="color:#f85149;" title="Агрессивные продажи: ${takerRatio.toFixed(2)}">📉${takerRatio.toFixed(1)}</span>`);
+                    badges.push('<span style="color:#f85149;" title="Агрессивные продажи: ' + takerRatio.toFixed(2) + '">📉' + takerRatio.toFixed(1) + '</span>');
                 }
             }
 
@@ -805,19 +805,19 @@
             if (liqUsd && liqUsd > 100000) {
                 const liqM = liqUsd >= 1000000
                     ? (liqUsd / 1000000).toFixed(1) + 'M'
-                    : (liqUsd / 1000).toFixed(0) + 'K';
-                const liqColor = (liqSide === 'SHORT' && isPump) || (liqSide === 'LONG' && !isPump)
-                    ? '#3fb950' : '#f85149';
+                    : Math.round(liqUsd / 1000) + 'K';
+                const isGood = (liqSide === 'SHORT' && isPump) || (liqSide === 'LONG' && !isPump);
+                const liqColor = isGood ? '#3fb950' : '#f85149';
                 const liqLabel = liqSide === 'SHORT' ? '💥S' : liqSide === 'LONG' ? '💥L' : '💥';
-                badges.push(`<span style="color:${liqColor};" title="${liqSide} ликвидации: $${liqM}">${liqLabel}$${liqM}</span>`);
+                badges.push('<span style="color:' + liqColor + ';" title="' + (liqSide||'') + ' ликвидации: $' + liqM + '">' + liqLabel + '$' + liqM + '</span>');
             }
 
             // Top trader vs retail divergence
             if (topTraderLs != null && globalLs != null && globalLs > 0) {
                 if (topTraderLs > 1.5 && globalLs < 1.0) {
-                    badges.push('<span style="color:#3fb950;" title="Топ-трейдеры лонг, ритейл шорт">🐋↑</span>');
+                    badges.push('<span style="color:#3fb950;" title="Топ-трейдеры ЛОНГ, ритейл ШОРТ — бычья дивергенция">🐋↑</span>');
                 } else if (topTraderLs < 0.7 && globalLs > 1.2) {
-                    badges.push('<span style="color:#f85149;" title="Топ-трейдеры шорт, ритейл лонг">🐋↓</span>');
+                    badges.push('<span style="color:#f85149;" title="Топ-трейдеры ШОРТ, ритейл ЛОНГ — медвежья дивергенция">🐋↓</span>');
                 }
             }
 
