@@ -437,7 +437,10 @@ class SignalBot:
     async def send_signals_batch(self, signals: List[SignalScore]):
         """Send multiple signals."""
         if not signals:
+            logger.info("No signals to send to Telegram (empty list)")
             return
+        
+        logger.info(f"Preparing to send {len(signals)} signals to Telegram")
 
         signals = sorted(
             signals,
@@ -449,6 +452,7 @@ class SignalBot:
 
         for signal in signals:
             try:
+                logger.info(f"Sending signal to Telegram: {signal.symbol} {signal.exchange} | Score: {signal.score}/5")
                 await self.send_signal(signal)
                 await asyncio.sleep(0.5)
             except Exception as exc:
