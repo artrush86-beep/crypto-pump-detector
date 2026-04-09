@@ -414,12 +414,13 @@
         let currentFilter = 'all';
         let signalsData = [];
         let apiUrl = localStorage.getItem('apiUrl') || '';
+        let refreshInterval = null;
         
         document.getElementById('apiUrl').value = apiUrl;
         
         if (apiUrl) {
             fetchSignals();
-            setInterval(fetchSignals, 60000); // Auto-refresh every 30s
+            refreshInterval = setInterval(fetchSignals, 60000); // Auto-refresh every 60s
         }
         
         function saveConfig() {
@@ -429,8 +430,12 @@
                 return;
             }
             localStorage.setItem('apiUrl', apiUrl);
+            // Clear old interval before setting new one
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
             fetchSignals();
-            setInterval(fetchSignals, 30000);
+            refreshInterval = setInterval(fetchSignals, 30000);
         }
         
         async function fetchSignals() {
@@ -574,7 +579,7 @@
                     
                     const tvInterval = convertTimeframe(timeframe);
                     const tvExchange = exchange.toUpperCase() === 'BYBIT' ? 'BYBIT' : 'BINANCE';
-                    const tvUrl = `https://www.tradingview.com/chart/?symbol=${tvExchange}:${symbol}&interval=${tvInterval}`;
+                    const tvUrl = `https://www.tradingview.com/chart/?symbol=${tvExchange}:${symbol}.P&interval=${tvInterval}`;
 
                     return `
                         <div class="signal-row" style="display: grid; grid-template-columns: 1fr 0.7fr 1fr 0.9fr 0.6fr 1fr 0.9fr 0.9fr 1fr 0.6fr 0.5fr 1.1fr 0.9fr 1.2fr; gap: 8px; padding: 12px 15px; border-bottom: 1px solid #30363d; align-items: center; font-size: 12px;">
@@ -633,14 +638,32 @@
             chartDiv.style.cssText = 'width:100%;height:100%;';
             widgetContainer.appendChild(chartDiv);
             
-            // Try different symbol formats
-            const tvSymbol = `BINANCE:${symbol}`;
-            console.log('TradingView symbol:', tvSymbol);
+            const tvSymbol = `BINANCE:${symbol}.P`;
             
-            // Check if TradingView is loaded
-            if (typeof window.TradingView !== 'undefined') {
-                console.log('TradingView already loaded, creating widget...');
-                try {
+            // Use TradingView Widget Constructor
+            if (window.TradingView) {
+                new window.TradingView.widget({
+                    container_id: containerId,
+                    symbol: tvSymbol,
+                    interval: '15',
+                    timezone: 'Europe/Moscow',
+                    theme: 'dark',
+                    style: '1',
+                    locale: 'en',
+                    toolbar_bg: '#161b22',
+                    enable_publishing: false,
+                    hide_top_toolbar: false,
+                    hide_legend: false,
+                    save_image: false,
+                    height: '100%',
+                    width: '100%'
+                });
+            } else {
+                // Fallback: inject TradingView script first
+                const tvScript = document.createElement('script');
+                tvScript.src = 'https://s3.tradingview.com/tv.js';
+                tvScript.async = true;
+                tvScript.onload = function() {
                     new window.TradingView.widget({
                         container_id: containerId,
                         symbol: tvSymbol,
@@ -657,45 +680,6 @@
                         height: '100%',
                         width: '100%'
                     });
-                    console.log('Widget created successfully');
-                } catch (e) {
-                    console.error('Error creating widget:', e);
-                    showChartError(widgetContainer, symbol, e.message);
-                }
-            } else {
-                console.log('TradingView not loaded, injecting script...');
-                // Inject TradingView script
-                const tvScript = document.createElement('script');
-                tvScript.src = 'https://s3.tradingview.com/tv.js';
-                tvScript.async = true;
-                tvScript.onload = function() {
-                    console.log('TradingView script loaded');
-                    try {
-                        new window.TradingView.widget({
-                            container_id: containerId,
-                            symbol: tvSymbol,
-                            interval: '15',
-                            timezone: 'Europe/Moscow',
-                            theme: 'dark',
-                            style: '1',
-                            locale: 'en',
-                            toolbar_bg: '#161b22',
-                            enable_publishing: false,
-                            hide_top_toolbar: false,
-                            hide_legend: false,
-                            save_image: false,
-                            height: '100%',
-                            width: '100%'
-                        });
-                        console.log('Widget created after script load');
-                    } catch (e) {
-                        console.error('Error creating widget after load:', e);
-                        showChartError(widgetContainer, symbol, e.message);
-                    }
-                };
-                tvScript.onerror = function() {
-                    console.error('Failed to load TradingView script');
-                    showChartError(widgetContainer, symbol, 'Failed to load TradingView');
                 };
                 document.head.appendChild(tvScript);
             }
@@ -707,7 +691,7 @@
                     <div style="font-size:48px;margin-bottom:20px;">📊</div>
                     <div style="font-size:18px;margin-bottom:10px;">Chart unavailable</div>
                     <div style="font-size:14px;color:#f85149;margin-bottom:20px;">${error}</div>
-                    <a href="https://www.tradingview.com/chart/?symbol=BINANCE:${symbol}&interval=15" 
+                    <a href="https://www.tradingview.com/chart/?symbol=BINANCE:${symbol}.P&interval=15" 
                        target="_blank" 
                        style="background:#238636;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;">
                        Open in TradingView
