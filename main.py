@@ -43,7 +43,7 @@ class PumpDetectorApp:
         # Initialize detectors for multiple timeframes
         self.detectors = {
             "5m": SignalDetector(
-                oi_threshold=3.0,  # Lower threshold for faster timeframe
+                oi_threshold=3.0,
                 price_threshold=0.5,
                 volume_threshold=30.0,
                 min_score=3,
@@ -56,8 +56,15 @@ class PumpDetectorApp:
                 min_score=3,
                 lookback_minutes=15
             ),
+            "30m": SignalDetector(
+                oi_threshold=6.5,
+                price_threshold=1.5,
+                volume_threshold=65.0,
+                min_score=3,
+                lookback_minutes=30
+            ),
             "1h": SignalDetector(
-                oi_threshold=8.0,  # Higher threshold for slower timeframe
+                oi_threshold=8.0,
                 price_threshold=2.0,
                 volume_threshold=80.0,
                 min_score=3,
@@ -98,17 +105,15 @@ class PumpDetectorApp:
         if not self.market_caps:
             logger.warning("No market cap data available, selecting top symbols without market cap filter")
             return sorted(symbols)[:settings.TOP_N_SYMBOLS]
-
-        # FIX: unknown symbols (not in CoinGecko top-250) get MIN_MARKET_CAP as default
-        # Previously used 0, which caused all non-top-250 symbols to be excluded
+        
         filtered = [
             symbol for symbol in symbols
-            if self.market_caps.get(self._base_symbol(symbol), settings.MIN_MARKET_CAP) >= settings.MIN_MARKET_CAP
+            if self.market_caps.get(self._base_symbol(symbol), 0) >= settings.MIN_MARKET_CAP
         ]
         ordered = sorted(
             filtered,
             key=lambda item: (
-                -self.market_caps.get(self._base_symbol(item), settings.MIN_MARKET_CAP),
+                -self.market_caps.get(self._base_symbol(item), 0),
                 item,
             ),
         )
@@ -308,13 +313,16 @@ class PumpDetectorApp:
                     for signal in signals:
                         signal.timeframe = timeframe
                     
-                    # FIX: was self.state.get("ignored_symbols") which was never updated
-                    # ignore_symbol() always updates self.ignored_symbols, not self.state
+                    # Filter ignored symbols and deduplicate
                     filtered_signals = [
                         signal for signal in signals
-                        if signal.symbol not in self.ignored_symbols
+                        if signal.symbol not in self.state.get("ignored_symbols", set())
                     ]
                     logger.info(f"📊 After filtering: {len(filtered_signals)} signals ready for Telegram")
+                    
+                    # ── Push to API/DB via to_dict() so factors & confidence reach frontend ──
+                    for signal in filtered_signals:
+                        self.signals_api.add_signal(signal.to_dict())
                     
                     # Send to Telegram
                     if bot and filtered_signals:
