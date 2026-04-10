@@ -20,13 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 def is_fatal_error(exc):
-    """Проверяет, нужно ли прекратить попытки (give up) для безнадежных HTTP статусов."""
+    """Give up immediately only for truly unrecoverable errors.
+    NOTE: 451 removed — handled inside proxy loop (try next proxy).
+    NOTE: 403 removed — also handled inside proxy loop.
+    """
     if isinstance(exc, aiohttp.ClientResponseError):
-        # 400: Bad Request (неверные параметры/символ)
-        # 404: Not Found (нет данных по символу)
-        # 451: Unavailable For Legal Reasons (IP в бане)
-        # 403: Forbidden
-        return exc.status in (400, 403, 404, 451)
+        # 400: Bad Request (wrong params/symbol — no point retrying)
+        # 404: Not Found (symbol has no data — no point retrying)
+        return exc.status in (400, 404)
     return False
 
 
@@ -95,6 +96,16 @@ class BinanceClient:
                             mark_proxy_failure("binance", proxy)
                         logger.error("Binance 403 Forbidden - IP may be blocked.")
                         raise aiohttp.ClientError("IP blocked by Binance (403)")
+                    if response.status == 451:
+                        # 451 = geo-blocked (US proxy IPs banned by Binance)
+                        # FIX: try next proxy instead of immediate giveup via is_fatal_error
+                        if proxy:
+                            mark_proxy_failure("binance", proxy)
+                            logger.warning("Binance 451 geo-block on %s, trying next proxy", mask_proxy(proxy))
+                        else:
+                            logger.error("Binance 451 on direct connection — need non-US proxies")
+                        last_error = aiohttp.ClientError("Geo-blocked by Binance (451)")
+                        continue
 
                     response.raise_for_status()
                     mark_proxy_success("binance", proxy)
