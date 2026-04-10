@@ -236,6 +236,8 @@ class SignalDetector:
         funding_rate: float,
         long_short_ratio: float,
         timestamp: datetime,
+        # FIX: current_price was missing - caused NameError, all confirmed signals failed silently
+        current_price: float = 0.0,
         taker_buy_ratio: Optional[float] = None,
         liq_usd: Optional[float] = None,
         liq_side: Optional[str] = None,
@@ -446,7 +448,9 @@ class SignalDetector:
             try:
                 processed_count += 1
                 base_symbol = symbol.replace("USDT", "").replace("USD", "")
-                market_cap = market_caps.get(base_symbol, 0)
+                # FIX: unknown symbols (not in CoinGecko top-250) get MIN_MARKET_CAP as default
+                # Previously used 0, which caused symbols like BSVUSDT, ASTERUSDT to be skipped
+                market_cap = market_caps.get(base_symbol, settings.MIN_MARKET_CAP)
                 if market_cap < settings.MIN_MARKET_CAP:
                     continue
 
@@ -498,6 +502,8 @@ class SignalDetector:
                     funding_rate=funding_rate,
                     long_short_ratio=long_short_ratio,
                     timestamp=now,
+                    # FIX: current_price was never passed, causing NameError inside the method
+                    current_price=current_price,
                     taker_buy_ratio=taker_buy_ratio,
                     liq_usd=liq_usd,
                     liq_side=liq_side,
