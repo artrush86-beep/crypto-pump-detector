@@ -416,23 +416,7 @@ class SignalBot:
             await self.send_message(message)
 
         if self.signals_api:
-            signal_data = {
-                "symbol": signal.symbol,
-                "exchange": signal.exchange,
-                "signal_type": signal.signal_type,
-                "score": signal.score,
-                "stage": signal.stage,
-                "timeframe": signal.timeframe,
-                "price_change": signal.price_change_pct,
-                "oi_change": signal.oi_change_pct,
-                "volume_change": signal.volume_change_pct,
-                "funding_rate": signal.funding_rate,
-                "long_short_ratio": signal.long_short_ratio,
-                "bias": signal.bias,
-                "price": signal.current_price,
-                "market_cap": 0,
-            }
-            self.signals_api.add_signal(signal_data)
+            self.signals_api.add_signal(signal.to_dict())
 
     async def send_signals_batch(self, signals: List[SignalScore]):
         """Send multiple signals."""
