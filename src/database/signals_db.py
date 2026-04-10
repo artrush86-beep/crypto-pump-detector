@@ -63,6 +63,8 @@ class SignalsDatabase:
 
             await self._ensure_column(db, "signals", "timeframe", "timeframe TEXT DEFAULT '15m'")
             await self._ensure_column(db, "signals", "stage", "stage TEXT DEFAULT 'CONFIRMED'")
+            await self._ensure_column(db, "signals", "confidence", "confidence TEXT DEFAULT 'LOW'")
+            await self._ensure_column(db, "signals", "bias", "bias TEXT DEFAULT 'LONG'")
             
             # Price alerts table
             await db.execute("""
@@ -143,10 +145,12 @@ class SignalsDatabase:
                 signal_data.get('timestamp', datetime.utcnow().isoformat())
             ))
             await db.execute(
-                "UPDATE signals SET timeframe = ?, stage = ? WHERE id = last_insert_rowid()",
+                "UPDATE signals SET timeframe = ?, stage = ?, confidence = ?, bias = ? WHERE id = last_insert_rowid()",
                 (
                     signal_data.get('timeframe', '15m'),
                     signal_data.get('stage', 'CONFIRMED'),
+                    signal_data.get('confidence', 'LOW'),
+                    signal_data.get('bias', 'LONG'),
                 ),
             )
             await db.commit()
