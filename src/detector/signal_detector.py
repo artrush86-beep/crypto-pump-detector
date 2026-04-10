@@ -37,6 +37,38 @@ class SignalScore:
     def bias(self) -> str:
         return "LONG" if self.signal_type == "PUMP" else "SHORT"
 
+    def to_dict(self) -> Dict:
+        """Serialize to flat dict for API/DB. Lifts factors & extended fields to top level."""
+        return {
+            "symbol": self.symbol,
+            "exchange": self.exchange,
+            "score": self.score,
+            "signal_type": self.signal_type.lower(),   # "pump" / "dump"
+            "confidence": self.confidence,              # "LOW" / "MEDIUM" / "HIGH" / "EXTREME"
+            "stage": self.stage,
+            "bias": self.bias,
+            "timeframe": self.timeframe,
+            "price": self.current_price,
+            "oi_change": self.oi_change_pct,
+            "oi_change_pct": self.oi_change_pct,
+            "price_change": self.price_change_pct,
+            "price_change_pct": self.price_change_pct,
+            "volume_change": self.volume_change_pct,
+            "volume_change_pct": self.volume_change_pct,
+            "funding_rate": self.funding_rate,
+            "long_short_ratio": self.long_short_ratio,
+            "timestamp": self.timestamp.isoformat(),
+            # ── lifted from details ──────────────────────────────────────────
+            "factors": self.details.get("factors", []),
+            "oi_trend": self.details.get("oi_trend", "flat"),
+            "taker_buy_ratio": self.details.get("taker_buy_ratio"),
+            "recent_liquidations_usd": self.details.get("recent_liquidations_usd"),
+            "liq_side": self.details.get("liq_side"),
+            "top_trader_ls_ratio": self.details.get("top_trader_ls_ratio"),
+            # keep raw details as well for backwards compatibility
+            "details": self.details,
+        }
+
     def to_message(self) -> str:
         """Format signal as Telegram message."""
         header_map = {
@@ -323,10 +355,10 @@ class SignalDetector:
             details={
                 "factors": factors,
                 "oi_trend": "up" if oi_change > 0 else "down" if oi_change < 0 else "flat",
-                "taker_buy_ratio": None,
-                "recent_liquidations_usd": None,
-                "liq_side": None,
-                "top_trader_ls_ratio": None,
+                "taker_buy_ratio": taker_buy_ratio,
+                "recent_liquidations_usd": liq_usd,
+                "liq_side": liq_side,
+                "top_trader_ls_ratio": top_trader_ls,
             },
             timestamp=timestamp,
         )
