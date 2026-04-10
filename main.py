@@ -320,10 +320,6 @@ class PumpDetectorApp:
                     ]
                     logger.info(f"📊 After filtering: {len(filtered_signals)} signals ready for Telegram")
                     
-                    # ── Push to API/DB via to_dict() so factors & confidence reach frontend ──
-                    for signal in filtered_signals:
-                        self.signals_api.add_signal(signal.to_dict())
-                    
                     # Send to Telegram
                     if bot and filtered_signals:
                         logger.info(f"Sending {len(filtered_signals)} signals to Telegram")
