@@ -29,6 +29,12 @@ class BybitMarketData:
     long_short_ratio: Optional[float]
     price_change_24h: float
     timestamp: datetime
+    # Extended fields — mirrors Binance MarketData so detector works uniformly
+    top_trader_long_short_ratio: Optional[float] = None
+    taker_buy_sell_ratio: Optional[float] = None
+    recent_liquidations_usd: Optional[float] = None
+    liq_side: Optional[str] = None
+    oi_trend: Optional[str] = None
 
 
 class BybitClient:
@@ -188,6 +194,16 @@ class BybitClient:
             
             current_oi = float(oi_hist[-1].get('openInterest', 0)) if oi_hist else 0
             
+            # OI trend from 2-period history
+            oi_trend = 'flat'
+            if len(oi_hist) >= 2:
+                v0 = float(oi_hist[0].get('openInterest', 0))
+                v1 = float(oi_hist[-1].get('openInterest', 0))
+                if v1 > v0 * 1.005:
+                    oi_trend = 'growing'
+                elif v1 < v0 * 0.995:
+                    oi_trend = 'shrinking'
+
             long_ratio = None
             if ls_ratio:
                 try:
@@ -203,7 +219,13 @@ class BybitClient:
                 funding_rate=float(ticker.get('fundingRate', 0)),
                 long_short_ratio=long_ratio,
                 price_change_24h=float(ticker.get('price24hPcnt', 0)) * 100,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.utcnow(),
+                # Extended: oi_trend computed above; others not available on Bybit public API
+                oi_trend=oi_trend,
+                top_trader_long_short_ratio=None,
+                taker_buy_sell_ratio=None,
+                recent_liquidations_usd=None,
+                liq_side=None,
             )
         except Exception as e:
             logger.error(f"Error fetching Bybit {symbol}: {e}")
