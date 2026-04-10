@@ -397,6 +397,121 @@
             <button class="filter-btn active" onclick="filterSignals('all')">Все сигналы</button>
             <button class="filter-btn" onclick="filterSignals('pump')">Только пампы</button>
             <button class="filter-btn" onclick="filterSignals('dump')">Только дампы</button>
+            <button class="filter-btn" id="descBtn" onclick="toggleDescription()" style="margin-left: auto; background: #21262d; border-color: #58a6ff; color: #58a6ff;">📖 Описание</button>
+        </div>
+        
+        <!-- DESCRIPTION PANEL -->
+        <div id="descriptionPanel" style="display:none; background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px; margin-bottom: 20px; line-height: 1.7;">
+            <h2 style="font-size: 16px; color: #e6edf3; margin-bottom: 20px; border-bottom: 1px solid #30363d; padding-bottom: 12px;">📖 Как читать таблицу сигналов</h2>
+            
+            <table style="width:100%; border-collapse: collapse; font-size: 13px;">
+                <thead>
+                    <tr style="background:#21262d;">
+                        <th style="padding:10px 14px; text-align:left; color:#8b949e; font-weight:600; border-bottom:1px solid #30363d; width:130px;">Столбец</th>
+                        <th style="padding:10px 14px; text-align:left; color:#8b949e; font-weight:600; border-bottom:1px solid #30363d;">Что означает</th>
+                        <th style="padding:10px 14px; text-align:left; color:#8b949e; font-weight:600; border-bottom:1px solid #30363d; width:200px;">Как читать</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="border-bottom:1px solid #21262d;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">МОНЕТА</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Торговая пара (всегда против USDT). Клик открывает график в TradingView.</td>
+                        <td style="padding:10px 14px; color:#8b949e;">BTCUSDT, ETHUSDT и т.д. 🔥 = монета в трендинге CoinGecko</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d; background:#0d1117;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">ТИП</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Направление сигнала: PUMP (рост) или DUMP (падение).</td>
+                        <td style="padding:10px 14px; color:#8b949e;"><span style="color:#3fb950;">PUMP</span> = лонг, <span style="color:#f85149;">DUMP</span> = шорт</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">ГОТОВНОСТЬ</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Стадия сигнала: насколько движение уже сформировалось.</td>
+                        <td style="padding:10px 14px; color:#8b949e;"><span style="background:#d29922;color:#fff;padding:1px 6px;border-radius:3px;font-size:11px;">РАНО, ЖДЕМ</span> = давление только набирается&nbsp;&nbsp;<span style="background:#238636;color:#fff;padding:1px 6px;border-radius:3px;font-size:11px;">ЗАХОДИМ</span> = подтверждённый импульс</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d; background:#0d1117;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">КУДА</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Торговое направление: LONG (купить) или SHORT (продать).</td>
+                        <td style="padding:10px 14px; color:#8b949e;"><span style="color:#3fb950;">↑ LONG</span> = открыть лонг, <span style="color:#f85149;">↓ SHORT</span> = открыть шорт</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">ОЧКИ</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Итоговый скор сигнала от 0 до 5. Складывается из OI, цены, объёма, фандинга и L/S. Наведи на ⓘ — увидишь все факторы.</td>
+                        <td style="padding:10px 14px; color:#8b949e;"><span style="color:#3fb950;">4–5</span> = сильный&nbsp; <span style="color:#d29922;">3</span> = средний&nbsp; <span style="color:#8b949e;">ниже 3</span> = слабый</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d; background:#0d1117;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">ЦЕНА</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Текущая цена монеты в момент обнаружения сигнала.</td>
+                        <td style="padding:10px 14px; color:#8b949e;">$0.0039 — мелкие альткоины, $6.06 — середняки и т.д.</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">OI (Open Interest)</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Изменение открытого интереса (суммарного объёма открытых позиций) за окно анализа.</td>
+                        <td style="padding:10px 14px; color:#8b949e;"><span style="color:#3fb950;">+5%</span> и выше = деньги заходят в рынок, давление растёт.<br><span style="color:#f85149;">−5%</span> = позиции закрываются, интерес падает.</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d; background:#0d1117;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">ОБЪЁМ</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Аномалия объёма относительно нормального потока за тот же период. Рассчитывается как отклонение от ожидаемой доли 24h объёма.</td>
+                        <td style="padding:10px 14px; color:#8b949e;"><span style="color:#3fb950;">+100%</span> = объём вдвое выше нормы — сильный сигнал.<br>Отрицательное значение = объём ниже нормы.</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">ФАНДИНГ</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Ставка финансирования на фьючерсах. Показывает, кто платит кому: лонги шортам или наоборот.</td>
+                        <td style="padding:10px 14px; color:#8b949e;"><span style="color:#3fb950;">Отрицательный</span> → шорты платят лонгам → рынок ожидает рост → хорошо для PUMP.<br><span style="color:#f85149;">Положительный</span> → лонги платят шортам → перегретый лонг → хорошо для DUMP.</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d; background:#0d1117;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">L/S (Long/Short Ratio)</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Соотношение лонг-позиций к шорт-позициям на бирже. Показывает настроение рынка.</td>
+                        <td style="padding:10px 14px; color:#8b949e;">
+                            <b style="color:#e6edf3;">0.41</b> = 41% лонгов, 59% шортов → шорты доминируют → Short Squeeze вероятен при росте.<br>
+                            <b style="color:#3fb950;">&gt; 1.0</b> = больше лонгов (бычий рынок).<br>
+                            <b style="color:#f85149;">&lt; 1.0</b> = больше шортов (медвежий рынок).<br>
+                            <b style="color:#8b949e;">= 1.0</b> = паритет.
+                        </td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">ТФ (Таймфрейм)</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">На каком окне анализа был обнаружен сигнал. Детектор работает одновременно на 5m, 15m и 1h.</td>
+                        <td style="padding:10px 14px; color:#8b949e;"><b>5m</b> = быстрые сигналы, больше шума.<br><b>15m</b> = основной баланс.<br><b>1h</b> = медленные, но надёжные движения.</td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d; background:#0d1117;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">УВЕРЕННОСТЬ</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Итоговая уверенность алгоритма в сигнале. Зависит от итогового скора.</td>
+                        <td style="padding:10px 14px; color:#8b949e;">
+                            <span style="color:#3fb950;">HIGH / EXTREME</span> = скор ≥ 4 — высокое качество.<br>
+                            <span style="color:#d29922;">MEDIUM</span> = скор 3–4 — средняя уверенность.<br>
+                            <span style="color:#8b949e;">LOW</span> = скор &lt; 3 — слабый сигнал, быть осторожным.<br>
+                            <i>Если везде LOW — бэкенд не передаёт поле confidence.</i>
+                        </td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">ФАКТОРЫ</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Список конкретных причин, по которым сигнал был выдан. Формируется алгоритмом из OI, цены, объёма, фандинга и L/S.</td>
+                        <td style="padding:10px 14px; color:#8b949e;">
+                            Примеры: <i>OI surge +7.3%</i>, <i>Volume spike +180%</i>, <i>L/S ratio 0.65 — short squeeze potential</i>.<br>
+                            <i>Если пусто «—» — бэкенд хранит факторы в details.factors, а не в корне объекта сигнала. Требуется фикс сериализации.</i>
+                        </td>
+                    </tr>
+                    <tr style="border-bottom:1px solid #21262d; background:#0d1117;">
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">БИРЖА</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Биржа, на которой обнаружен сигнал. Клик открывает монету в TradingView.</td>
+                        <td style="padding:10px 14px; color:#8b949e;">BINANCE ↗ или BYBIT ↗ — кликабельные ссылки на нужный таймфрейм.</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:10px 14px; color:#58a6ff; font-weight:600;">ВРЕМЯ (МСК)</td>
+                        <td style="padding:10px 14px; color:#c9d1d9;">Время обнаружения сигнала, переведённое в московский часовой пояс (UTC+3).</td>
+                        <td style="padding:10px 14px; color:#8b949e;">14:13:28 MSK — время на сервере конвертируется автоматически.</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div style="margin-top: 20px; padding: 14px; background: #0d1117; border-radius: 8px; border-left: 3px solid #d29922;">
+                <div style="font-size: 12px; color: #d29922; font-weight: 600; margin-bottom: 6px;">⚠️ Столбик ФАКТОРЫ пустой?</div>
+                <div style="font-size: 12px; color: #8b949e;">Бэкенд хранит факторы внутри <code style="background:#161b22;padding:1px 5px;border-radius:3px;">signal.details.factors</code>, но в БД и Redis они сохраняются без «поднятия» наверх. Нужно добавить в сериализацию SignalScore: <code style="background:#161b22;padding:1px 5px;border-radius:3px;">"factors": self.details.get("factors", [])</code> как отдельное поле при сохранении.</div>
+            </div>
+            <div style="margin-top: 10px; padding: 14px; background: #0d1117; border-radius: 8px; border-left: 3px solid #8b949e;">
+                <div style="font-size: 12px; color: #8b949e; font-weight: 600; margin-bottom: 6px;">ℹ️ УВЕРЕННОСТЬ везде LOW?</div>
+                <div style="font-size: 12px; color: #8b949e;">Поле <code style="background:#161b22;padding:1px 5px;border-radius:3px;">confidence</code> есть в объекте SignalScore, но не попадает в словарь при сохранении. Нужно явно добавить его при сериализации сигнала в dict.</div>
+            </div>
         </div>
         
         <div class="signals-table">
@@ -412,7 +527,7 @@
                     <div class="col-funding">ФАНДИНГ</div>
                     <div class="col-ls">L/S</div>
                     <div class="col-tf">ТФ</div>
-                    <div class="col-signals">УВЕР</div>
+                    <div class="col-signals">УВЕРЕННОСТЬ</div>
                     <div class="col-factors">ФАКТОРЫ</div>
                     <div class="col-exchange">БИРЖА</div>
                     <div class="col-time">ВРЕМЯ (МСК)</div>
@@ -534,6 +649,16 @@
             document.getElementById('pumpCount').textContent = pumps;
             document.getElementById('dumpCount').textContent = dumps;
             document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        }
+        
+        function toggleDescription() {
+            const panel = document.getElementById('descriptionPanel');
+            const btn = document.getElementById('descBtn');
+            const isVisible = panel.style.display !== 'none';
+            panel.style.display = isVisible ? 'none' : 'block';
+            btn.style.background = isVisible ? '#21262d' : '#1f6feb';
+            btn.style.borderColor = isVisible ? '#58a6ff' : '#1f6feb';
+            btn.style.color = isVisible ? '#58a6ff' : '#fff';
         }
         
         function filterSignals(type) {
