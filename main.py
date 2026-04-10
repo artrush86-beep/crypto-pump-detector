@@ -106,12 +106,9 @@ class PumpDetectorApp:
             logger.warning("No market cap data available, selecting top symbols without market cap filter")
             return sorted(symbols)[:settings.TOP_N_SYMBOLS]
         
-        # FIX: unknown symbols (not in CoinGecko top-250) get MIN_MARKET_CAP as default.
-        # Previously used 0 → caused ~125 valid Binance symbols to be silently dropped.
-        # This matches the same logic in signal_detector.process_market_data.
         filtered = [
             symbol for symbol in symbols
-            if self.market_caps.get(self._base_symbol(symbol), settings.MIN_MARKET_CAP) >= settings.MIN_MARKET_CAP
+            if self.market_caps.get(self._base_symbol(symbol), 0) >= settings.MIN_MARKET_CAP
         ]
         ordered = sorted(
             filtered,
@@ -248,7 +245,7 @@ class PumpDetectorApp:
                 bybit_symbols = await bybit.get_all_symbols()
                 logger.info(f"Bybit: {len(bybit_symbols)} symbols")
         except Exception as e:
-            logger.error(f"Bybit unavailable during init: {type(e).__name__}: {e}")
+            logger.error(f"Bybit unavailable: {e}")
             bybit_symbols = []
         
         self.exchange_symbols = {
