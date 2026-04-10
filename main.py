@@ -33,6 +33,13 @@ class PumpDetectorApp:
     """Main application orchestrator."""
     
     def __init__(self):
+        # Initialize state storage
+        self.state = {
+            "ignored_symbols": set(),
+            "paused": False,
+            "last_signals": {}
+        }
+        
         # Initialize detectors for multiple timeframes
         self.detectors = {
             "5m": SignalDetector(
