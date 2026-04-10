@@ -19,6 +19,17 @@ from src.exchanges.proxy_session import (
 logger = logging.getLogger(__name__)
 
 
+def is_fatal_error(exc):
+    """Проверяет, нужно ли прекратить попытки (give up) для безнадежных HTTP статусов."""
+    if isinstance(exc, aiohttp.ClientResponseError):
+        # 400: Bad Request (неверные параметры/символ)
+        # 404: Not Found (нет данных по символу)
+        # 451: Unavailable For Legal Reasons (IP в бане)
+        # 403: Forbidden
+        return exc.status in (400, 403, 404, 451)
+    return False
+
+
 @dataclass
 class MarketData:
     """Unified market data structure."""
@@ -55,7 +66,12 @@ class BinanceClient:
         if self.session:
             await self.session.close()
     
-    @backoff.on_exception(backoff.expo, (aiohttp.ClientError, asyncio.TimeoutError), max_tries=3)
+    @backoff.on_exception(
+        backoff.expo,
+        (aiohttp.ClientError, asyncio.TimeoutError),
+        max_tries=3,
+        giveup=is_fatal_error
+    )
     async def _request(self, endpoint: str, params: Dict = None) -> Any:
         """Make request to Binance API through proxy if configured."""
         url = f"{self.BASE_URL}{endpoint}"
