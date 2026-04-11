@@ -60,7 +60,7 @@ class CoinGeckoClient:
     async def get_coins_markets(
         self, 
         vs_currency: str = "usd",
-        per_page: int = 250,
+        per_page: int = 300,
         page: int = 1
     ) -> List[Dict]:
         """Get coins with market data including market cap."""
@@ -143,7 +143,7 @@ class CoinGeckoClient:
         to save an API call.
         """
         try:
-            markets = await self.get_coins_markets(per_page=250)
+            markets = await self.get_coins_markets(per_page=300)
             # Sort by 24h price change descending
             sorted_markets = sorted(
                 markets,
@@ -178,7 +178,7 @@ class CoinGeckoClient:
             > 200        → small cap, higher volatility → score += 0.5
         """
         try:
-            markets = await self.get_coins_markets(per_page=250)
+            markets = await self.get_coins_markets(per_page=300)
         except Exception as e:
             logger.warning(f"Failed to fetch CoinGecko market cap/rank: {e}")
             return {}
@@ -198,7 +198,7 @@ class CoinGeckoClient:
     async def get_market_cap_map(self, min_market_cap: float = 10_000_000) -> Dict[str, float]:
         """Get mapping of symbol -> market cap (original method, unchanged)."""
         try:
-            markets = await self.get_coins_markets(per_page=250)
+            markets = await self.get_coins_markets(per_page=300)
         except Exception as e:
             logger.warning(f"Failed to fetch CoinGecko markets: {e}")
             return {}
