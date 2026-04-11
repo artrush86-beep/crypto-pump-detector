@@ -46,28 +46,28 @@ class PumpDetectorApp:
                 oi_threshold=3.0,
                 price_threshold=0.5,
                 volume_threshold=30.0,
-                min_score=3,
+                min_score=2.5,
                 lookback_minutes=5
             ),
             "15m": SignalDetector(
                 oi_threshold=5.0,
                 price_threshold=1.0,
                 volume_threshold=50.0,
-                min_score=3,
+                min_score=2.5,
                 lookback_minutes=15
             ),
             "30m": SignalDetector(
                 oi_threshold=6.5,
                 price_threshold=1.5,
                 volume_threshold=65.0,
-                min_score=3,
+                min_score=2.5,
                 lookback_minutes=30
             ),
             "1h": SignalDetector(
                 oi_threshold=8.0,
                 price_threshold=2.0,
                 volume_threshold=80.0,
-                min_score=3,
+                min_score=2.5,
                 lookback_minutes=60
             )
         }
