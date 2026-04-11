@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     
     # Exchange settings
     EXCHANGES: List[str] = ["binance", "bybit"]
-    TOP_N_SYMBOLS: int = 200
+    TOP_N_SYMBOLS: int = 300
     
     # Database
     DB_PATH: str = "data/signals.db"
