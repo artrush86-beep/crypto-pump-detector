@@ -574,13 +574,13 @@
                 const response = await fetch(pairsUrl);
                 if (response.ok) {
                     const data = await response.json();
-                    document.getElementById('binancePairs').textContent = data.binance_pairs || 300;
-                    document.getElementById('bybitPairs').textContent = data.bybit_pairs || 300;
+                    document.getElementById('binancePairs').textContent = data.binance_pairs || 500;
+                    document.getElementById('bybitPairs').textContent = data.bybit_pairs || 500;
                 }
             } catch (e) {
                 console.log('Pairs endpoint not available, using defaults');
-                document.getElementById('binancePairs').textContent = '300';
-                document.getElementById('bybitPairs').textContent = '300';
+                document.getElementById('binancePairs').textContent = '500';
+                document.getElementById('bybitPairs').textContent = '500';
             }
         }
         
@@ -592,7 +592,7 @@
             
             try {
                 updateStatus('loading');
-                const url = apiUrl.includes('?') ? `${apiUrl}&limit=300` : `${apiUrl}?limit=300`;
+                const url = apiUrl.includes('?') ? `${apiUrl}&limit=500` : `${apiUrl}?limit=500`;
                 const response = await fetch(url);
                 
                 if (!response.ok) {
