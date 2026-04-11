@@ -153,7 +153,7 @@ class SignalDetector:
         oi_threshold: float = 5.0,
         price_threshold: float = 1.0,
         volume_threshold: float = 50.0,
-        min_score: int = 3,
+        min_score: int = 2.5,
         lookback_minutes: int = 15,
     ):
         self.oi_threshold = oi_threshold
