@@ -176,7 +176,7 @@ class SignalBot:
                 "<code>/alert SYMBOL ПРОЦЕНТ</code>\n\n"
                 "Примеры:\n"
                 "• <code>/alert BTCUSDT 1</code>\n"
-                "• <code>/alert ETHUSDT 2.5</code>",
+                "• <code>/alert ETHUSDT 3.0</code>",
                 parse_mode=ParseMode.HTML,
             )
             return
