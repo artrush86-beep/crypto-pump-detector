@@ -37,8 +37,8 @@ class Settings(BaseSettings):
     LOOKBACK_WINDOW: int = 900
     
     # Signal scoring
-    MIN_SIGNAL_SCORE: int = 2.5
-    EARLY_SIGNAL_MIN_SCORE: float = 2.5
+    MIN_SIGNAL_SCORE: int = 3.0
+    EARLY_SIGNAL_MIN_SCORE: float = 3.0
     ENABLE_EARLY_SIGNALS: bool = True
     SIGNAL_COOLDOWN_SECONDS: int = 1800
     EARLY_SIGNAL_COOLDOWN_SECONDS: int = 900
