@@ -640,7 +640,7 @@
         }
         
         function updateStats(data) {
-            const highScoreSignals = signalsData.filter(s => (parseFloat(s.score) || 0) >= 2.5);
+            const highScoreSignals = signalsData.filter(s => (parseFloat(s.score) || 0) >= 3.0);
             document.getElementById('totalSignals').textContent = highScoreSignals.length;
             
             const pumps = highScoreSignals.filter(s => s.signal_type?.toLowerCase() === 'pump').length;
@@ -676,8 +676,8 @@
         function renderSignals() {
             console.log('Rendering signals:', signalsData);
             
-            // Only show signals with score >= 2.5
-            let filtered = signalsData.filter(s => (parseFloat(s.score) || 0) >= 2.5);
+            // Only show signals with score >= 3.0
+            let filtered = signalsData.filter(s => (parseFloat(s.score) || 0) >= 3.0);
             
             if (currentFilter !== 'all') {
                 filtered = filtered.filter(s => s.signal_type?.toLowerCase() === currentFilter);
@@ -706,7 +706,7 @@
                     const isPump = signal.signal_type === 'pump';
                     const score = parseFloat(signal.score) || 0;
                     const scoreClass = score >= 4 ? 'score-high' : 
-                                      score >= 2.5 ? 'score-medium' : 'score-low';
+                                      score >= 3.0 ? 'score-medium' : 'score-low';
                     
                     // Handle both database fields (snake_case) and API fields
                     let oiChange = signal.oi_change ?? signal.oiChange ?? 0;
