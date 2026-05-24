@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     MIN_MARKET_CAP: float = 200_000
     
     # Time intervals (seconds)
-    SCAN_INTERVAL: int = 180
+    SCAN_INTERVAL: int = 220
     PRICE_CHECK_INTERVAL: int = 60
     LOOKBACK_WINDOW: int = 900
     
@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     
     # Exchange settings
     EXCHANGES: List[str] = ["binance", "bybit", "okx"]
-    TOP_N_SYMBOLS: int = 300
+    TOP_N_SYMBOLS: int = 400
     
     # Database
     DB_PATH: str = "data/signals.db"
