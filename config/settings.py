@@ -52,8 +52,9 @@ class Settings(BaseSettings):
     # Cache settings
     CACHE_TTL: int = 300
     
-    # Exchange settings
-    EXCHANGES: List[str] = ["binance", "bybit", "okx"]
+    # Exchange settings — accepts JSON list OR comma-separated string
+    # e.g. '["binance","bybit","okx"]' OR 'binance,bybit,okx'
+    EXCHANGES: str = "binance,bybit,okx"
     TOP_N_SYMBOLS: int = 300
     
     # Database
@@ -62,6 +63,18 @@ class Settings(BaseSettings):
     # Redis (Upstash) for persistent signal storage
     REDIS_URL: Optional[str] = None  # e.g., rediss://default:pass@host:port
     
+    @property
+    def exchanges_list(self) -> List[str]:
+        """Parse EXCHANGES from either JSON or comma-separated string."""
+        raw = self.EXCHANGES.strip()
+        if raw.startswith("["):
+            import json
+            try:
+                return json.loads(raw)
+            except Exception:
+                pass
+        return [e.strip().lower() for e in raw.split(",") if e.strip()]
+
     class Config:
         env_file = ".env"
 
