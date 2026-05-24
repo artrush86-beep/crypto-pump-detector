@@ -11,7 +11,6 @@ import time
 from config.settings import settings
 from src.exchanges.binance_client import BinanceClient
 from src.exchanges.bybit_client import BybitClient
-from src.exchanges.okx_client import OKXClient
 from src.exchanges.coingecko_client import CoinGeckoClient
 from src.detector.signal_detector import SignalDetector
 from src.bot.telegram_bot import SignalBot
@@ -136,7 +135,7 @@ class PumpDetectorApp:
     def _get_latest_symbol_snapshot(self, symbol: str) -> Tuple[Optional[str], Optional[Any]]:
         """Return latest market snapshot for symbol, preferring Binance then Bybit."""
         upper_symbol = symbol.upper()
-        for exchange_name in ("binance", "bybit", "okx"):
+        for exchange_name in ("binance", "bybit"):
             snapshot = self.latest_market_data.get(exchange_name, {}).get(upper_symbol)
             if snapshot:
                 return exchange_name, snapshot
@@ -251,34 +250,20 @@ class PumpDetectorApp:
         except Exception as e:
             logger.error(f"Bybit unavailable during init: {type(e).__name__}: {e}")
             bybit_symbols = []
-
-        try:
-            async with OKXClient() as okx:
-                okx_symbols = await okx.get_all_symbols()
-                logger.info(f"OKX: {len(okx_symbols)} symbols")
-        except Exception as e:
-            logger.error(f"OKX unavailable during init: {type(e).__name__}: {e}")
-            okx_symbols = []
         
         self.exchange_symbols = {
             "binance": self._select_top_symbols(binance_symbols),
             "bybit": self._select_top_symbols(bybit_symbols),
-            "okx": self._select_top_symbols(okx_symbols),
         }
-        self.latest_market_data = {"binance": {}, "bybit": {}, "okx": {}}
+        self.latest_market_data = {"binance": {}, "bybit": {}}
 
-        self.all_symbols = (
-            set(self.exchange_symbols["binance"])
-            | set(self.exchange_symbols["bybit"])
-            | set(self.exchange_symbols["okx"])
-        )
+        self.all_symbols = set(self.exchange_symbols["binance"]) | set(self.exchange_symbols["bybit"])
         self.stats['pairs_count'] = len(self.all_symbols)
         
         logger.info(
-            "Selected pairs: Binance=%s Bybit=%s OKX=%s Total unique=%s",
+            "Selected pairs: Binance=%s Bybit=%s Total unique=%s",
             len(self.exchange_symbols["binance"]),
             len(self.exchange_symbols["bybit"]),
-            len(self.exchange_symbols["okx"]),
             len(self.all_symbols),
         )
         
@@ -299,9 +284,6 @@ class PumpDetectorApp:
                     data = await client.get_market_data_batch(symbols)
             elif exchange_name == "bybit":
                 async with BybitClient() as client:
-                    data = await client.get_market_data_batch(symbols)
-            elif exchange_name == "okx":
-                async with OKXClient() as client:
                     data = await client.get_market_data_batch(symbols)
             else:
                 return
