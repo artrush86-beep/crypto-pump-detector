@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     BINANCE_PROXY_URLS: str = ""
     BYBIT_PROXY_URL: Optional[str] = None
     BYBIT_PROXY_URLS: str = ""
+    OKX_PROXY_URL: Optional[str] = None
+    OKX_PROXY_URLS: str = ""
     PROXY_COOLDOWN_SECONDS: int = 900
     
     # API Keys (optional for most free endpoints)
@@ -51,7 +53,7 @@ class Settings(BaseSettings):
     CACHE_TTL: int = 300
     
     # Exchange settings
-    EXCHANGES: List[str] = ["binance", "bybit"]
+    EXCHANGES: List[str] = ["binance", "bybit", "okx"]
     TOP_N_SYMBOLS: int = 300
     
     # Database

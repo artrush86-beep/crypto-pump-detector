@@ -59,6 +59,10 @@ def _configured_proxies(exchange_name: str) -> List[str]:
         proxies.extend(_parse_proxy_list(settings.BYBIT_PROXY_URLS))
         if settings.BYBIT_PROXY_URL:
             proxies.append(settings.BYBIT_PROXY_URL)
+    elif exchange == "okx":
+        proxies.extend(_parse_proxy_list(settings.OKX_PROXY_URLS))
+        if settings.OKX_PROXY_URL:
+            proxies.append(settings.OKX_PROXY_URL)
 
     proxies.extend(_parse_proxy_list(settings.PROXY_URLS))
     if settings.PROXY_URL:
