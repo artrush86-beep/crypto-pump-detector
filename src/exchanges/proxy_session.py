@@ -26,6 +26,35 @@ def create_session() -> aiohttp.ClientSession:
     return aiohttp.ClientSession(connector=connector)
 
 
+# ── Simple TTL cache for slow-changing data ─────────────────────────────
+
+class TTLCache:
+    """In-memory dict with per-key TTL.  Thread-safe enough for asyncio
+    (single-threaded event loop).
+    """
+
+    def __init__(self, default_ttl: int = 900):
+        """default_ttl in seconds (15 min)."""
+        self._store: Dict[str, tuple] = {}  # key -> (value, expiry_ts)
+        self._default_ttl = default_ttl
+
+    def get(self, key: str) -> Optional[Any]:
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        value, expiry = entry
+        if time.time() > expiry:
+            del self._store[key]
+            return None
+        return value
+
+    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+        self._store[key] = (value, time.time() + (ttl or self._default_ttl))
+
+    def clear(self) -> None:
+        self._store.clear()
+
+
 def mask_proxy(proxy_url: Optional[str]) -> str:
     """Mask credentials when logging proxy URLs."""
     if not proxy_url:

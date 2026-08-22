@@ -334,6 +334,57 @@
         .signal-row {
             cursor: pointer;
         }
+        
+        /* ── Mobile responsive ───────────────────────────────────── */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 10px;
+                padding: 15px;
+            }
+            .header h1 {
+                font-size: 18px;
+            }
+            .container {
+                padding: 15px;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 10px;
+            }
+            .stat-card {
+                padding: 12px;
+            }
+            .stat-card h3 {
+                font-size: 11px;
+            }
+            .stat-value {
+                font-size: 20px !important;
+            }
+            .filters {
+                flex-wrap: wrap;
+                gap: 6px;
+            }
+            .filter-btn {
+                font-size: 12px;
+                padding: 6px 12px;
+            }
+            .table-header, .signal-row {
+                grid-template-columns: 1fr 0.6fr 0.6fr 0.7fr !important;
+                font-size: 11px;
+            }
+            /* Hide less important columns on mobile */
+            .col-oi, .col-volume, .col-factors, .col-ls, .col-tf {
+                display: none;
+            }
+            .signal-row > div:nth-child(7),
+            .signal-row > div:nth-child(8),
+            .signal-row > div:nth-child(11),
+            .signal-row > div:nth-child(12),
+            .signal-row > div:nth-child(13) {
+                display: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -388,6 +439,10 @@
                 <div class="stat-value" id="bybitPairs" style="color: #00c853;">-</div>
             </div>
             <div class="stat-card">
+                <h3>OKX Pairs</h3>
+                <div class="stat-value" id="okxPairs" style="color: #fff;">-</div>
+            </div>
+            <div class="stat-card">
                 <h3>Last Update</h3>
                 <div class="stat-value" id="lastUpdate" style="font-size: 18px; margin-top: 8px;">-</div>
             </div>
@@ -395,8 +450,10 @@
         
         <div class="filters">
             <button class="filter-btn active" onclick="filterSignals('all')">Все сигналы</button>
-            <button class="filter-btn" onclick="filterSignals('pump')">Только пампы</button>
-            <button class="filter-btn" onclick="filterSignals('dump')">Только дампы</button>
+            <button class="filter-btn" onclick="filterSignals('pump')">🟢 Пампы</button>
+            <button class="filter-btn" onclick="filterSignals('dump')">🔴 Дампы</button>
+            <button class="filter-btn" onclick="filterConfidence('high')" style="border-color: #f0883e; color: #f0883e;">🟠 HIGH+</button>
+            <button class="filter-btn" onclick="filterConfidence('extreme')" style="border-color: #f85149; color: #f85149;">🔴 EXTREME</button>
             <button class="filter-btn" id="descBtn" onclick="toggleDescription()" style="margin-left: auto; background: #21262d; border-color: #58a6ff; color: #58a6ff;">📖 Описание</button>
         </div>
         
@@ -544,6 +601,13 @@
         let apiUrl = localStorage.getItem('apiUrl') || '';
         let refreshInterval = null;
         
+        // Auto-detect API URL from the backend Railway URL
+        if (!apiUrl) {
+            const autoApi = 'https://crypto-pump-detector-production.up.railway.app/api/signals';
+            apiUrl = autoApi;
+            localStorage.setItem('apiUrl', autoApi);
+        }
+        
         document.getElementById('apiUrl').value = apiUrl;
         
         if (apiUrl) {
@@ -574,13 +638,15 @@
                 const response = await fetch(pairsUrl);
                 if (response.ok) {
                     const data = await response.json();
-                    document.getElementById('binancePairs').textContent = data.binance_pairs || 500;
-                    document.getElementById('bybitPairs').textContent = data.bybit_pairs || 500;
+                    document.getElementById('binancePairs').textContent = data.binance_pairs ?? '-';
+                    document.getElementById('bybitPairs').textContent = data.bybit_pairs ?? '-';
+                    document.getElementById('okxPairs').textContent = data.okx_pairs ?? '-';
                 }
             } catch (e) {
                 console.log('Pairs endpoint not available, using defaults');
-                document.getElementById('binancePairs').textContent = '500';
-                document.getElementById('bybitPairs').textContent = '500';
+                document.getElementById('binancePairs').textContent = '-';
+                document.getElementById('bybitPairs').textContent = '-';
+                document.getElementById('okxPairs').textContent = '-';
             }
         }
         
@@ -661,10 +727,25 @@
             btn.style.color = isVisible ? '#58a6ff' : '#fff';
         }
         
+        let currentConfidenceFilter = 'all';
+        
         function filterSignals(type) {
             currentFilter = type;
+            currentConfidenceFilter = 'all';  // reset confidence filter
             
             // Update button states
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            renderSignals();
+        }
+        
+        function filterConfidence(level) {
+            currentConfidenceFilter = level;
+            currentFilter = 'all';  // reset type filter
+            
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
@@ -681,6 +762,17 @@
             
             if (currentFilter !== 'all') {
                 filtered = filtered.filter(s => s.signal_type?.toLowerCase() === currentFilter);
+            }
+            
+            if (currentConfidenceFilter !== 'all') {
+                if (currentConfidenceFilter === 'high') {
+                    filtered = filtered.filter(s => {
+                        const conf = (s.confidence || '').toLowerCase();
+                        return conf === 'high' || conf === 'extreme';
+                    });
+                } else if (currentConfidenceFilter === 'extreme') {
+                    filtered = filtered.filter(s => (s.confidence || '').toLowerCase() === 'extreme');
+                }
             }
             
             if (filtered.length === 0) {
@@ -738,7 +830,8 @@
                     lsRatio = parseFloat(lsRatio) || 0;
                     
                     const tvInterval = convertTimeframe(timeframe);
-                    const tvExchange = exchange.toUpperCase() === 'BYBIT' ? 'BYBIT' : 'BINANCE';
+                    const exUpper = exchange.toUpperCase();
+                    const tvExchange = (exUpper === 'BYBIT' || exUpper === 'OKX') ? exUpper : 'BINANCE';
                     const tvUrl = `https://www.tradingview.com/chart/?symbol=${tvExchange}:${symbol}.P&interval=${tvInterval}`;
 
                     return `

@@ -167,25 +167,52 @@ class BybitClient:
             return []
     
     async def get_market_data_batch(self, symbols: List[str]) -> Dict[str, BybitMarketData]:
+        """Two-step fetch: cheap tickers first, then OI/L/S only for candidates.
+
+        Step 1: One batch request for all tickers (~1 API call)
+        Step 2: Filter by volume threshold from ticker data (0 API calls)
+        Step 3: Fetch OI + L/S only for candidates (~2 calls per symbol)
+
+        This reduces total API calls from 600+ to ~200 for 300 symbols.
+        """
         result = {}
         all_tickers = await self.get_tickers()
         tickers_map = {t['symbol']: t for t in all_tickers}
-        
-        for i in range(0, len(symbols), 5):
-            batch = symbols[i:i+5]
-            tasks = []
-            for symbol in batch:
-                if symbol in tickers_map:
-                    tasks.append(self._get_single_market_data(symbol, tickers_map[symbol]))
-            
+
+        # ── Step 2: Pre-filter by volume from ticker data ──
+        # Symbols with very low 24h volume are unlikely to pump
+        MIN_VOLUME_USDT = 100_000  # $100k daily volume minimum
+        candidates = []
+        for symbol in symbols:
+            ticker = tickers_map.get(symbol)
+            if not ticker:
+                continue
+            volume = float(ticker.get('turnover24h', 0) or ticker.get('volume24h', 0) or 0)
+            price = float(ticker.get('lastPrice', 0) or 0)
+            if price > 0 and volume >= MIN_VOLUME_USDT:
+                candidates.append((symbol, ticker))
+
+        logger.info(
+            "Bybit pre-filter: %d → %d candidates (volume >= $%s)",
+            len(symbols), len(candidates), f"{MIN_VOLUME_USDT:,.0f}",
+        )
+
+        # ── Step 3: Fetch OI + L/S only for candidates ──
+        for i in range(0, len(candidates), 5):
+            batch = candidates[i:i+5]
+            tasks = [
+                self._get_single_market_data(symbol, ticker)
+                for symbol, ticker in batch
+            ]
+
             batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-            for symbol, data in zip(batch, batch_results):
+            for (symbol, _), data in zip(batch, batch_results):
                 if isinstance(data, BybitMarketData):
                     result[symbol] = data
-            
-            if i + 5 < len(symbols):
+
+            if i + 5 < len(candidates):
                 await asyncio.sleep(0.5)
-        
+
         return result
     
     async def _get_single_market_data(self, symbol: str, ticker: Dict) -> BybitMarketData:

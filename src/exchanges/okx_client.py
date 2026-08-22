@@ -248,24 +248,37 @@ class OKXClient:
             if inst_id.endswith("-USDT-SWAP"):
                 tickers_map[from_okx_id(inst_id)] = t
 
+        # ── Pre-filter by volume from ticker data ──
+        MIN_VOLUME_USDT = 100_000  # $100k daily volume minimum
+        candidates = []
+        for sym in symbols:
+            ticker = tickers_map.get(sym)
+            if not ticker:
+                continue
+            volume = float(ticker.get("volCcy24h", 0) or 0)
+            price = float(ticker.get("last", 0) or 0)
+            if price > 0 and volume >= MIN_VOLUME_USDT:
+                candidates.append((sym, ticker))
+
+        logger.info(
+            "OKX pre-filter: %d → %d candidates (volume >= $%s)",
+            len(symbols), len(candidates), f"{MIN_VOLUME_USDT:,.0f}",
+        )
+
         # Per-symbol enrichment in small batches to avoid rate limits
-        for i in range(0, len(symbols), 5):
-            batch = symbols[i : i + 5]
-            tasks = []
-            valid_symbols = []
-            for sym in batch:
-                if sym in tickers_map:
-                    valid_symbols.append(sym)
-                    tasks.append(
-                        self._get_single_market_data(sym, tickers_map[sym])
-                    )
+        for i in range(0, len(candidates), 5):
+            batch = candidates[i : i + 5]
+            tasks = [
+                self._get_single_market_data(sym, ticker)
+                for sym, ticker in batch
+            ]
 
             batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-            for sym, res in zip(valid_symbols, batch_results):
+            for (sym, _), res in zip(batch, batch_results):
                 if isinstance(res, OKXMarketData):
                     result[sym] = res
 
-            if i + 5 < len(symbols):
+            if i + 5 < len(candidates):
                 await asyncio.sleep(0.3)
 
         return result

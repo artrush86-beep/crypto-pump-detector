@@ -472,11 +472,66 @@ class SignalDetector:
             return "MEDIUM"
         return "LOW"
 
+    @staticmethod
+    def _apply_context_bonuses(
+        signal: SignalScore,
+        base_symbol: str,
+        trending: Optional[set],
+        top_gainers: Optional[set],
+        ranks: Optional[Dict[str, int]],
+    ) -> None:
+        """Post-scoring bonuses based on CoinGecko context data.
+
+        These are softer signals than the core metrics but provide
+        valuable crowd-sentiment and volatility context.
+        """
+        if trending and base_symbol in trending:
+            bonus = 1.0
+            signal.score = min(signal.score + bonus, 5.0)
+            signal.details.setdefault("factors", []).append(
+                f"CoinGecko trending #top7"
+            )
+
+        if top_gainers and base_symbol in top_gainers:
+            bonus = 0.5
+            signal.score = min(signal.score + bonus, 5.0)
+            signal.details.setdefault("factors", []).append(
+                "Top 50 gainer 24h"
+            )
+
+        if ranks:
+            rank = ranks.get(base_symbol)
+            if rank is not None:
+                if rank <= 50:
+                    # Blue chip — less likely to pump aggressively
+                    signal.score = max(signal.score - 0.3, 0.0)
+                    signal.details.setdefault("factors", []).append(
+                        f"Blue chip (rank #{rank})"
+                    )
+                elif rank > 200:
+                    # Small cap — higher volatility potential
+                    bonus = 0.5
+                    signal.score = min(signal.score + bonus, 5.0)
+                    signal.details.setdefault("factors", []).append(
+                        f"Small cap (rank #{rank})"
+                    )
+
+        # Recalculate confidence after bonuses
+        signal.confidence = (
+            "EXTREME" if signal.score >= 5
+            else "HIGH" if signal.score >= 4
+            else "MEDIUM" if signal.score >= 3
+            else "LOW"
+        )
+
     async def process_market_data(
         self,
         exchange: str,
         data: Dict[str, Any],
         market_caps: Dict[str, float],
+        trending: Optional[set] = None,
+        top_gainers: Optional[set] = None,
+        ranks: Optional[Dict[str, int]] = None,
     ) -> List[SignalScore]:
         """Process batch of market data and generate signals."""
         signals: List[SignalScore] = []
@@ -550,6 +605,9 @@ class SignalDetector:
                     top_trader_ls=top_trader_ls,
                 )
                 if confirmed_signal:
+                    self._apply_context_bonuses(
+                        confirmed_signal, base_symbol, trending, top_gainers, ranks
+                    )
                     signals.append(confirmed_signal)
                     logger.info(
                         "Confirmed signal detected: %s %s %.1f",
@@ -576,6 +634,9 @@ class SignalDetector:
                     top_trader_ls=top_trader_ls,
                 )
                 if early_signal:
+                    self._apply_context_bonuses(
+                        early_signal, base_symbol, trending, top_gainers, ranks
+                    )
                     signals.append(early_signal)
                     logger.info(
                         "Early signal detected: %s %s %.1f",

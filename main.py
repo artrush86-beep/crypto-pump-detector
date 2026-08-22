@@ -79,6 +79,9 @@ class PumpDetectorApp:
             'last_scan': None
         }
         self.market_caps: Dict[str, float] = {}
+        self.market_cap_ranks: Dict[str, int] = {}  # symbol -> CoinGecko rank
+        self.trending_symbols: Set[str] = set()       # CoinGecko top-7 trending
+        self.top_gainers: Set[str] = set()             # top 50 24h gainers
         self.all_symbols: Set[str] = set()
         self.exchange_symbols: Dict[str, List[str]] = {}
         self.latest_market_data: Dict[str, Dict[str, Any]] = {}
@@ -271,11 +274,40 @@ class PumpDetectorApp:
         # Get market cap data from CoinGecko (with fallback)
         try:
             async with CoinGeckoClient() as cg:
-                logger.info("Fetching market cap data from CoinGecko...")
-                self.market_caps = await cg.get_market_cap_map(
+                logger.info("Fetching market cap + trending from CoinGecko...")
+
+                # Extended market cap with rank
+                cap_rank_map = await cg.get_market_cap_and_rank_map(
                     min_market_cap=settings.MIN_MARKET_CAP
                 )
-                logger.info(f"Loaded {len(self.market_caps)} coins with market cap >= ${settings.MIN_MARKET_CAP:,.0f}")
+                self.market_caps = {
+                    sym: data["market_cap"] for sym, data in cap_rank_map.items()
+                }
+                self.market_cap_ranks = {
+                    sym: data["rank"] for sym, data in cap_rank_map.items()
+                }
+                logger.info(
+                    "Loaded %d coins with market cap >= $%s",
+                    len(self.market_caps),
+                    f"{settings.MIN_MARKET_CAP:,.0f}",
+                )
+
+                # Trending: top 7 searched on CoinGecko (1 API call)
+                try:
+                    self.trending_symbols = await cg.get_trending_symbols()
+                    logger.info("CoinGecko trending: %s", self.trending_symbols)
+                except Exception as e:
+                    logger.warning("CoinGecko trending failed: %s", e)
+                    self.trending_symbols = set()
+
+                # Top gainers: top 50 by 24h change (reuses market data)
+                try:
+                    self.top_gainers = await cg.get_top_gainers_symbols(top_n=50)
+                    logger.info("CoinGecko top gainers: %d symbols", len(self.top_gainers))
+                except Exception as e:
+                    logger.warning("CoinGecko gainers failed: %s", e)
+                    self.top_gainers = set()
+
         except Exception as e:
             logger.warning(f"CoinGecko failed (rate limit?), continuing without market cap filter: {e}")
             self.market_caps = {}
@@ -371,7 +403,10 @@ class PumpDetectorApp:
                 signals = await detector.process_market_data(
                     exchange=exchange_name,
                     data=data,
-                    market_caps=self.market_caps
+                    market_caps=self.market_caps,
+                    trending=self.trending_symbols,
+                    top_gainers=self.top_gainers,
+                    ranks=self.market_cap_ranks,
                 )
                 
                 if signals:
@@ -489,19 +524,24 @@ class PumpDetectorApp:
 
                 start_time = time.time()
                 
-                # Scan both exchanges - continue even if one fails
-                for idx, exchange_name in enumerate(settings.exchanges_list):
-                    try:
-                        await self.scan_exchange(exchange_name, bot)
-                    except Exception as e:
-                        logger.error(f"Failed to scan {exchange_name}: {e}. Continuing with other exchanges.")
-                    if idx < len(settings.exchanges_list) - 1:
-                        await asyncio.sleep(2)
+                # Scan ALL exchanges in parallel — each has its own client/pool
+                exchange_names = settings.exchanges_list
+                scan_tasks = [
+                    self.scan_exchange(name, bot) for name in exchange_names
+                ]
+                scan_results = await asyncio.gather(*scan_tasks, return_exceptions=True)
+                
+                for name, result in zip(exchange_names, scan_results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Failed to scan {name}: {result}")
                 
                 elapsed = time.time() - start_time
                 sleep_time = max(0, settings.SCAN_INTERVAL - elapsed)
                 
-                logger.info(f"Scan completed in {elapsed:.1f}s, sleeping {sleep_time:.1f}s")
+                logger.info(
+                    "Parallel scan completed in %.1fs (%d exchanges), sleeping %.1fs",
+                    elapsed, len(exchange_names), sleep_time,
+                )
                 
                 # Sleep with interrupt check
                 await asyncio.wait_for(

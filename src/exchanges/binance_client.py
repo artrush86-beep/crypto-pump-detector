@@ -14,6 +14,7 @@ from src.exchanges.proxy_session import (
     mark_proxy_failure,
     mark_proxy_success,
     mask_proxy,
+    TTLCache,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,9 @@ class BinanceClient:
     """
 
     BASE_URL = "https://fapi.binance.com"
+
+    # Cache OI/L/S/funding per symbol — changes slowly, safe to cache 10 min
+    _symbol_cache = TTLCache(default_ttl=600)
 
     def __init__(self):
         self.session: Optional[aiohttp.ClientSession] = None

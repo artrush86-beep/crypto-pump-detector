@@ -668,3 +668,91 @@ class TestSignalScore:
         assert "CoinGlass" in msg
         assert "SOLUSDT" in msg
         assert "BINANCE" in msg
+
+
+# ===================================================================
+# _apply_context_bonuses
+# ===================================================================
+
+class TestContextBonuses:
+    """CoinGecko trending / gainers / rank bonus tests."""
+
+    def _make_signal(self, score: float = 3.0) -> SignalScore:
+        return SignalScore(
+            symbol="TESTUSDT",
+            exchange="binance",
+            score=score,
+            oi_change_pct=5.0,
+            price_change_pct=2.0,
+            volume_change_pct=60.0,
+            funding_rate=-0.001,
+            long_short_ratio=0.8,
+            signal_type="PUMP",
+            confidence="MEDIUM",
+            stage="CONFIRMED",
+            details={"factors": []},
+        )
+
+    def test_trending_bonus(self):
+        """Trending symbol gets +1.0 to score."""
+        d = _det()
+        sig = self._make_signal(score=3.0)
+        d._apply_context_bonuses(sig, "BTC", trending={"BTC", "ETH"}, top_gainers=set(), ranks={})
+        assert sig.score == 4.0
+        assert any("trending" in f.lower() for f in sig.details["factors"])
+
+    def test_gainers_bonus(self):
+        """Top gainer gets +0.5 to score."""
+        d = _det()
+        sig = self._make_signal(score=3.0)
+        d._apply_context_bonuses(sig, "PEPE", trending=set(), top_gainers={"PEPE", "WIF"}, ranks={})
+        assert sig.score == 3.5
+        assert any("gainer" in f.lower() for f in sig.details["factors"])
+
+    def test_blue_chip_penalty(self):
+        """Rank <= 50 gets -0.3 penalty."""
+        d = _det()
+        sig = self._make_signal(score=4.0)
+        d._apply_context_bonuses(sig, "BTC", trending=set(), top_gainers=set(), ranks={"BTC": 1})
+        assert sig.score == pytest.approx(3.7)
+        assert any("blue chip" in f.lower() for f in sig.details["factors"])
+
+    def test_small_cap_bonus(self):
+        """Rank > 200 gets +0.5 bonus."""
+        d = _det()
+        sig = self._make_signal(score=3.0)
+        d._apply_context_bonuses(sig, "MOG", trending=set(), top_gainers=set(), ranks={"MOG": 350})
+        assert sig.score == 3.5
+        assert any("small cap" in f.lower() for f in sig.details["factors"])
+
+    def test_combined_bonuses(self):
+        """Trending + small cap = +1.5 total."""
+        d = _det()
+        sig = self._make_signal(score=3.0)
+        d._apply_context_bonuses(sig, "PEPE", trending={"PEPE"}, top_gainers=set(), ranks={"PEPE": 500})
+        assert sig.score == 4.5
+        assert len(sig.details["factors"]) == 2
+
+    def test_score_capped_at_5(self):
+        """Score cannot exceed 5.0 even with bonuses."""
+        d = _det()
+        sig = self._make_signal(score=4.8)
+        d._apply_context_bonuses(sig, "BTC", trending={"BTC"}, top_gainers={"BTC"}, ranks={"BTC": 300})
+        assert sig.score == 5.0
+
+    def test_confidence_recalculated(self):
+        """Confidence is recalculated after bonuses."""
+        d = _det()
+        sig = self._make_signal(score=3.0)
+        sig.confidence = "MEDIUM"
+        d._apply_context_bonuses(sig, "BTC", trending={"BTC"}, top_gainers=set(), ranks={})
+        # 3.0 + 1.0 = 4.0 → HIGH
+        assert sig.confidence == "HIGH"
+
+    def test_no_context_data(self):
+        """With no trending/gainers/ranks, score unchanged."""
+        d = _det()
+        sig = self._make_signal(score=3.0)
+        d._apply_context_bonuses(sig, "SOL", trending=set(), top_gainers=set(), ranks={})
+        assert sig.score == 3.0
+        assert len(sig.details["factors"]) == 0
