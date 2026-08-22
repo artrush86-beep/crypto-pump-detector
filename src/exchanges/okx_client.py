@@ -26,9 +26,44 @@ from src.exchanges.proxy_session import (
 logger = logging.getLogger(__name__)
 
 
+class OKXSymbolNotFoundError(Exception):
+    """Raised when OKX returns 'Token does not exist' (51012).
+    Not retried by backoff — just skip the symbol.
+    """
+    pass
+
+
 # ────────────────────────────────────────────────────────────────────────────
-#  Symbol conversion helpers
+#  OKX Rate Limiter (token bucket)
+#  OKX public API: 20 requests / 2 seconds ≈ 10 req/sec
+#  We use a lock + sleep to ensure minimum 200ms between requests.
 # ────────────────────────────────────────────────────────────────────────────
+
+class _OKXRateLimiter:
+    """Simple token-bucket rate limiter for OKX API calls.
+
+    Allows MIN_INTERVAL between consecutive requests.  If a request
+    arrives faster than that, it sleeps the difference.
+    """
+
+    MIN_INTERVAL = 0.1  # 100ms → max ~10 req/sec (OKX allows 20/2sec)
+
+    def __init__(self):
+        self._lock = asyncio.Lock()
+        self._last_request: float = 0.0
+
+    async def acquire(self):
+        """Wait until it's safe to make the next request."""
+        async with self._lock:
+            now = asyncio.get_event_loop().time()
+            wait = self.MIN_INTERVAL - (now - self._last_request)
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._last_request = asyncio.get_event_loop().time()
+
+
+_okx_rate_limiter = _OKXRateLimiter()
+
 
 def to_okx_id(symbol: str) -> str:
     """BTCUSDT  →  BTC-USDT-SWAP"""
@@ -100,6 +135,8 @@ class OKXClient:
     )
     async def _request(self, endpoint: str, params: Dict = None) -> Any:
         """GET request to OKX public API, with proxy fallback."""
+        # Rate limit: OKX allows 20 req / 2 sec
+        await _okx_rate_limiter.acquire()
         url = f"{self.BASE_URL}{endpoint}"
         timeout = aiohttp.ClientTimeout(total=15)
         last_error: Optional[Exception] = None
@@ -133,9 +170,15 @@ class OKXClient:
                     data = await response.json()
 
                     # OKX returns {"code": "0", "data": [...]}
-                    if str(data.get("code", "0")) != "0":
+                    code = str(data.get("code", "0"))
+                    if code != "0":
+                        msg = data.get('msg', '')
+                        if code == '51012':
+                            raise OKXSymbolNotFoundError(
+                                f"Token does not exist: {data.get('instId', '')}"
+                            )
                         raise aiohttp.ClientError(
-                            f"OKX API error {data.get('code')}: {data.get('msg')}"
+                            f"OKX API error {code}: {msg}"
                         )
 
                     mark_proxy_success("okx", proxy)
@@ -183,6 +226,9 @@ class OKXClient:
                 "/api/v5/public/open-interest",
                 {"instType": "SWAP", "instId": okx_inst_id},
             )
+        except OKXSymbolNotFoundError:
+            logger.debug("OKX symbol not found: %s (skipping)", okx_inst_id)
+            return []
         except Exception as e:
             logger.debug("OKX OI not available for %s: %s", okx_inst_id, e)
             return []
@@ -196,6 +242,9 @@ class OKXClient:
             )
             if data:
                 return float(data[0].get("fundingRate", 0))
+        except OKXSymbolNotFoundError:
+            logger.debug("OKX symbol not found for funding: %s (skipping)", okx_inst_id)
+            return 0.0
         except Exception as e:
             logger.debug("OKX funding rate not available for %s: %s", okx_inst_id, e)
         return 0.0
@@ -267,9 +316,10 @@ class OKXClient:
             len(symbols), len(candidates), f"{MIN_VOLUME_USDT:,.0f}",
         )
 
-        # Per-symbol enrichment in small batches to avoid rate limits
-        for i in range(0, len(candidates), 10):
-            batch = candidates[i : i + 10]
+        # Per-symbol enrichment in small batches — rate limiter in _request
+        # ensures we don't exceed OKX's 20 req / 2 sec limit.
+        for i in range(0, len(candidates), 5):
+            batch = candidates[i : i + 5]
             tasks = [
                 self._get_single_market_data(sym, ticker)
                 for sym, ticker in batch
@@ -281,7 +331,7 @@ class OKXClient:
                     result[sym] = res
 
             if i + 5 < len(candidates):
-                await asyncio.sleep(1.0)  # OKX has strict rate limits
+                await asyncio.sleep(0.5)  # Small gap between batches
 
         return result
 
@@ -301,11 +351,10 @@ class OKXClient:
                 return cached
 
 
-            # Parallel fetch of OI and funding
-            oi_data, funding_rate, long_ratio = await asyncio.gather(
+            # Parallel fetch of OI and funding only (skip L/S to save API calls)
+            oi_data, funding_rate = await asyncio.gather(
                 self.get_open_interest(okx_id),
                 self.get_funding_rate(okx_id),
-                self.get_long_short_ratio(ccy),
                 return_exceptions=True,
             )
 
@@ -314,8 +363,7 @@ class OKXClient:
                 oi_data = []
             if isinstance(funding_rate, Exception):
                 funding_rate = 0.0
-            if isinstance(long_ratio, Exception):
-                long_ratio = None
+            long_ratio = None  # OKX L/S ratio skipped to reduce API calls
 
             # OI value and trend from 2-period history
             current_oi = 0.0

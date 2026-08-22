@@ -199,8 +199,8 @@ class BybitClient:
             ticker = tickers_map.get(symbol)
             if not ticker:
                 continue
-            volume = float(ticker.get('turnover24h', 0) or ticker.get('volume24h', 0) or 0)
-            price = float(ticker.get('lastPrice', 0) or 0)
+            volume = _safe_float(ticker.get('turnover24h') or ticker.get('volume24h') or 0)
+            price = _safe_float(ticker.get('lastPrice') or 0)
             if price > 0 and volume >= MIN_VOLUME_USDT:
                 candidates.append((symbol, ticker))
 

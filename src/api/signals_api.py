@@ -182,6 +182,7 @@ class SignalsAPI:
         scan_paused = getattr(controller, 'scan_paused', False) if controller else False
         stats = getattr(controller, 'stats', {}) if controller else {}
         exchange_symbols = getattr(controller, 'exchange_symbols', {}) if controller else {}
+        trending = getattr(controller, 'trending_symbols', set()) if controller else set()
 
         return web.json_response(
             {
@@ -196,9 +197,11 @@ class SignalsAPI:
                 ),
                 "pairs_count": stats.get('pairs_count', 0),
                 "exchanges": {
-                    name: len(syms)
+                    name: len(syms) if hasattr(syms, '__len__') else 0
                     for name, syms in exchange_symbols.items()
                 },
+                "trending_count": len(trending) if hasattr(trending, '__len__') else 0,
+                "trending": sorted(list(trending))[:10] if trending else [],
                 "source": "redis" if self.use_redis else "sqlite",
             },
             headers={"Access-Control-Allow-Origin": "*"}
