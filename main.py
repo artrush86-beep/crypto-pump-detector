@@ -34,12 +34,8 @@ class PumpDetectorApp:
     """Main application orchestrator."""
     
     def __init__(self):
-        # Initialize state storage
-        self.state = {
-            "ignored_symbols": set(),
-            "paused": False,
-            "last_signals": {}
-        }
+        # State is now managed via self.ignored_symbols and self.scan_paused
+        # (persisted in SQLite via bot_state table)
         
         # Initialize detectors for multiple timeframes
         self.detectors = {
@@ -93,12 +89,61 @@ class PumpDetectorApp:
         import os
         port = int(os.environ.get("PORT", 8080))
         self.signals_api = SignalsAPI(host="0.0.0.0", port=port)
+        self.signals_api.set_controller(self)
         # Initialize database
         self.db = SignalsDatabase()
         logger.info(f"Signals API initialized on port {port}, database ready")
 
     def _base_symbol(self, symbol: str) -> str:
         return symbol.replace("USDT", "").replace("USD", "")
+
+    @staticmethod
+    def _deduplicate_signals(signals: list) -> list:
+        """Keep the best signal per (symbol, exchange), then boost cross-exchange.
+
+        Step 1: per (symbol, exchange) keep best signal.
+        Step 2: per (symbol) if same direction on multiple exchanges, boost score.
+        """
+        tf_order = {"5m": 0, "15m": 1, "30m": 2, "1h": 3}
+
+        # Step 1: best per (symbol, exchange)
+        best: dict = {}
+        for sig in signals:
+            key = (sig.symbol, sig.exchange)
+            existing = best.get(key)
+            if existing is None:
+                best[key] = sig
+                continue
+            if sig.stage == "CONFIRMED" and existing.stage != "CONFIRMED":
+                best[key] = sig
+                continue
+            if existing.stage == "CONFIRMED" and sig.stage != "CONFIRMED":
+                continue
+            if sig.score > existing.score:
+                best[key] = sig
+                continue
+            if tf_order.get(sig.timeframe, 9) < tf_order.get(existing.timeframe, 9):
+                best[key] = sig
+
+        # Step 2: cross-exchange boost
+        by_symbol: dict = {}  # symbol -> list of signals
+        for sig in best.values():
+            by_symbol.setdefault(sig.symbol, []).append(sig)
+
+        for symbol, sigs in by_symbol.items():
+            if len(sigs) < 2:
+                continue
+            # Check if same direction on multiple exchanges
+            directions = {s.signal_type for s in sigs}
+            if len(directions) == 1:
+                # All same direction — boost best signal by 0.5
+                best_sig = max(sigs, key=lambda s: s.score)
+                best_sig.score = min(best_sig.score + 0.5, 5.0)
+                best_sig.details.setdefault("factors", []).append(
+                    f"Cross-exchange confirmation ({len(sigs)} exchanges)"
+                )
+
+        return list(best.values())
 
     def _select_top_symbols(self, symbols: List[str]) -> List[str]:
         """Select a stable top-N list ordered by market cap."""
@@ -241,7 +286,8 @@ class PumpDetectorApp:
                 binance_symbols = await binance.get_all_symbols()
                 logger.info(f"Binance: {len(binance_symbols)} symbols")
         except Exception as e:
-            logger.error(f"Binance unavailable: {e}")
+            error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            logger.error(f"Binance unavailable: {error_detail}")
             binance_symbols = []
             
         try:
@@ -249,7 +295,8 @@ class PumpDetectorApp:
                 bybit_symbols = await bybit.get_all_symbols()
                 logger.info(f"Bybit: {len(bybit_symbols)} symbols")
         except Exception as e:
-            logger.error(f"Bybit unavailable during init: {type(e).__name__}: {e}")
+            error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            logger.error(f"Bybit unavailable during init: {error_detail}")
             bybit_symbols = []
 
         try:
@@ -257,7 +304,8 @@ class PumpDetectorApp:
                 okx_symbols = await okx.get_all_symbols()
                 logger.info(f"OKX: {len(okx_symbols)} symbols")
         except Exception as e:
-            logger.error(f"OKX unavailable during init: {type(e).__name__}: {e}")
+            error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            logger.error(f"OKX unavailable during init: {error_detail}")
             okx_symbols = []
         
         self.exchange_symbols = {
@@ -314,7 +362,8 @@ class PumpDetectorApp:
             
             logger.info(f"Scanning {exchange_name}: {len(data)} symbols")
             
-            # Process each timeframe
+            # Process each timeframe and collect all signals
+            all_signals = []
             for timeframe, detector in self.detectors.items():
                 logger.info(f"Processing {timeframe} timeframe...")
                 
@@ -333,22 +382,31 @@ class PumpDetectorApp:
                     # Add timeframe to each signal
                     for signal in signals:
                         signal.timeframe = timeframe
-                    
-                    # Filter ignored symbols and deduplicate
-                    filtered_signals = [
-                        signal for signal in signals
-                        if signal.symbol not in self.state.get("ignored_symbols", set())
-                    ]
-                    logger.info(f"📊 After filtering: {len(filtered_signals)} signals ready for Telegram")
-                    
-                    # Send to Telegram
-                    if bot and filtered_signals:
-                        logger.info(f"Sending {len(filtered_signals)} signals to Telegram")
-                        await bot.send_signals_batch(filtered_signals)
-                    elif not filtered_signals:
-                        logger.info("No signals to send after filtering")
+                    all_signals.extend(signals)
                 else:
                     logger.info(f"❌ No signals detected for {exchange_name} ({timeframe})")
+
+            # Filter ignored symbols
+            filtered_signals = [
+                signal for signal in all_signals
+                if signal.symbol not in self.ignored_symbols
+            ]
+            logger.info(f"📊 After filtering: {len(filtered_signals)} signals ready for Telegram")
+
+            # Deduplicate: keep best signal per symbol (highest score, prefer CONFIRMED)
+            deduped = self._deduplicate_signals(filtered_signals)
+            if len(deduped) < len(filtered_signals):
+                logger.info(
+                    "🔁 Deduplicated %d → %d signals (kept best per symbol)",
+                    len(filtered_signals), len(deduped),
+                )
+
+            # Send to Telegram
+            if bot and deduped:
+                logger.info(f"Sending {len(deduped)} signals to Telegram")
+                await bot.send_signals_batch(deduped)
+            elif not deduped:
+                logger.info("No signals to send after filtering")
             
             # Check price alerts
             await self._check_price_alerts(exchange_name, data, bot)
@@ -356,9 +414,10 @@ class PumpDetectorApp:
             self.stats['last_scan'] = datetime.utcnow()
             
         except Exception as e:
-            logger.error(f"Error scanning {exchange_name}: {e}")
-            if self._should_notify_error(exchange_name, str(e)):
-                await bot.send_error(f"{exchange_name} scan error: {str(e)[:160]}")
+            error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            logger.error(f"Error scanning {exchange_name}: {error_detail}")
+            if self._should_notify_error(exchange_name, error_detail):
+                await bot.send_error(f"{exchange_name} scan error: {error_detail[:160]}")
     
     async def _check_price_alerts(self, exchange_name: str, data: Dict, bot: SignalBot):
         """Check price alerts and trigger if threshold reached."""

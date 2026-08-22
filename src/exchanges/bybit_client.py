@@ -63,6 +63,7 @@ class BybitClient:
             "bybit",
             max_candidates=3,
             include_direct_fallback=True,
+            direct_first=True,
         ):
             kwargs = {"params": params or {}, "timeout": timeout}
             if proxy:
@@ -189,9 +190,15 @@ class BybitClient:
     
     async def _get_single_market_data(self, symbol: str, ticker: Dict) -> BybitMarketData:
         try:
-            oi_hist = await self.get_open_interest(symbol, "15min", 2)
-            ls_ratio = await self.get_long_short_ratio(symbol)
-            
+            # Parallel fetch: OI and L/S ratio simultaneously
+            oi_hist, ls_ratio = await asyncio.gather(
+                self.get_open_interest(symbol, "15min", 2),
+                self.get_long_short_ratio(symbol),
+                return_exceptions=True,
+            )
+            oi_hist = oi_hist if isinstance(oi_hist, list) else []
+            ls_ratio = ls_ratio if isinstance(ls_ratio, list) else []
+
             current_oi = float(oi_hist[-1].get('openInterest', 0)) if oi_hist else 0
             
             # OI trend from 2-period history

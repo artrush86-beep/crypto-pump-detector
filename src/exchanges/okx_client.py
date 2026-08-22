@@ -106,6 +106,7 @@ class OKXClient:
             "okx",
             max_candidates=3,
             include_direct_fallback=True,
+            direct_first=True,
         ):
             kwargs: Dict[str, Any] = {"params": params or {}, "timeout": timeout}
             if proxy:
@@ -236,7 +237,8 @@ class OKXClient:
         try:
             all_tickers_raw = await self.get_tickers()
         except Exception as e:
-            logger.error("OKX: failed to fetch tickers: %s", e)
+            error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            logger.error("OKX: failed to fetch tickers: %s", error_detail)
             return result
 
         # Build lookup by internal symbol

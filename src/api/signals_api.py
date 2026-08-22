@@ -20,6 +20,7 @@ class SignalsAPI:
         self.host = host
         self.port = port
         self.signals: List[Dict[str, Any]] = []
+        self._controller = None  # set via set_controller()
         self.app = web.Application()
         self.app.router.add_get("/api/signals", self.get_signals)
         self.app.router.add_get("/api/health", self.health_check)
@@ -30,6 +31,10 @@ class SignalsAPI:
         # Initialize database connection
         self.db = SignalsDatabase()
         self.use_redis = False
+
+    def set_controller(self, controller) -> None:
+        """Link to PumpDetectorApp for dynamic pair counts."""
+        self._controller = controller
         
     async def init_redis(self):
         """Initialize Redis connection if available."""
@@ -171,22 +176,54 @@ class SignalsAPI:
             )
     
     async def health_check(self, request: web.Request) -> web.Response:
-        """Health check endpoint."""
+        """Health check endpoint — returns rich status for monitoring."""
+        controller = getattr(self, '_controller', None)
+        running = getattr(controller, 'running', False) if controller else False
+        scan_paused = getattr(controller, 'scan_paused', False) if controller else False
+        stats = getattr(controller, 'stats', {}) if controller else {}
+        exchange_symbols = getattr(controller, 'exchange_symbols', {}) if controller else {}
+
         return web.json_response(
-            {"status": "ok", "signals_count": len(self.signals)},
+            {
+                "status": "ok",
+                "running": running,
+                "scan_paused": scan_paused,
+                "signals_count": len(self.signals),
+                "last_scan": stats.get('last_scan', None),
+                "pairs_count": stats.get('pairs_count', 0),
+                "exchanges": {
+                    name: len(syms)
+                    for name, syms in exchange_symbols.items()
+                },
+                "source": "redis" if self.use_redis else "sqlite",
+            },
             headers={"Access-Control-Allow-Origin": "*"}
         )
     
     async def get_pairs(self, request: web.Request) -> web.Response:
         """Return scanning pairs configuration."""
+        # Try to get real counts from controller if available
+        controller = getattr(self, '_controller', None)
+        if controller and hasattr(controller, 'exchange_symbols'):
+            exchange_symbols = controller.exchange_symbols
+            binance_count = len(exchange_symbols.get('binance', []))
+            bybit_count = len(exchange_symbols.get('bybit', []))
+            okx_count = len(exchange_symbols.get('okx', []))
+            total = len(getattr(controller, 'all_symbols', set()))
+        else:
+            binance_count = 0
+            bybit_count = 0
+            okx_count = 0
+            total = 0
+
         return web.json_response(
             {
-                "total_pairs": 400,
-                "binance_pairs": 200,
-                "bybit_pairs": 200,
-                "exchanges": ["binance", "bybit"],
-                "top_coins": 400,
-                "note": "Scanning 200 pairs from each exchange independently"
+                "total_pairs": total,
+                "binance_pairs": binance_count,
+                "bybit_pairs": bybit_count,
+                "okx_pairs": okx_count,
+                "exchanges": ["binance", "bybit", "okx"],
+                "note": "Live counts from detector"
             },
             headers={"Access-Control-Allow-Origin": "*"}
         )

@@ -39,8 +39,10 @@ class SignalsDatabase:
         """Initialize database tables."""
         if self._init_done:
             return
-            
+
         async with aiosqlite.connect(self.db_path) as db:
+            # Enable WAL mode for better concurrent read/write performance
+            await db.execute("PRAGMA journal_mode=WAL")
             # Signals table
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS signals (

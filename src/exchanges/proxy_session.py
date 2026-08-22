@@ -84,6 +84,12 @@ def available_proxies(exchange_name: str) -> List[str]:
     now = time.time()
     failures = _PROXY_FAILURES[exchange_name.lower()]
     available = [proxy for proxy in proxies if failures.get(proxy, 0) <= now]
+    if not available and proxies:
+        logger.warning(
+            "All %d proxies for %s are in cooldown — will try them anyway",
+            len(proxies),
+            exchange_name,
+        )
     return available or proxies
 
 
@@ -92,22 +98,36 @@ def get_proxy_candidates(
     *,
     max_candidates: int = 3,
     include_direct_fallback: bool = False,
+    direct_first: bool = False,
 ) -> List[Optional[str]]:
-    """Return a rotated list of proxy candidates for an exchange."""
+    """Return a rotated list of proxy candidates for an exchange.
+
+    When *direct_first* is True, a direct connection (no proxy) is tried
+    before any proxy.  This is useful for Bybit/OKX which do not geo-block
+    cloud IPs, so a direct request often succeeds while all configured
+    proxies are dead.
+    """
     exchange = exchange_name.lower()
     proxies = available_proxies(exchange)
 
-    if not proxies:
-        return [None]
+    candidates: List[Optional[str]] = []
 
-    start_idx = _PROXY_INDEX[exchange] % len(proxies)
-    ordered = proxies[start_idx:] + proxies[:start_idx]
-    _PROXY_INDEX[exchange] += 1
-
-    candidates: List[Optional[str]] = ordered[:max_candidates]
-    if include_direct_fallback:
+    if direct_first:
         candidates.append(None)
-    return candidates
+
+    if proxies:
+        start_idx = _PROXY_INDEX[exchange] % len(proxies)
+        ordered = proxies[start_idx:] + proxies[:start_idx]
+        _PROXY_INDEX[exchange] += 1
+        candidates.extend(ordered[:max_candidates])
+    elif not include_direct_fallback and not direct_first:
+        # No proxies at all and direct not requested — still try direct
+        candidates.append(None)
+
+    if include_direct_fallback and None not in candidates:
+        candidates.append(None)
+
+    return candidates or [None]
 
 
 def mark_proxy_failure(exchange_name: str, proxy_url: Optional[str]) -> None:

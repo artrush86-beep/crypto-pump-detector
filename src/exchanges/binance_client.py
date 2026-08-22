@@ -420,21 +420,25 @@ class BinanceClient:
     async def _get_single_market_data(self, symbol: str, ticker: Dict) -> MarketData:
         """Fetch all data for one symbol, including new metrics."""
         try:
-            # Original calls
-            oi_hist = await self.get_open_interest_hist(symbol, "15m", 2)
-            funding = await self.get_funding_rate(symbol)
-            ls_ratio = await self.get_long_short_ratio(symbol)
-            
-            # Extended fields (optional, may be None)
-            top_trader_long_short_ratio = await self.get_top_trader_ls_ratio(symbol)
-            taker_ratio = await self.get_taker_buy_sell_ratio(symbol)
-            liqs = await self.get_recent_liquidations(symbol, limit=20)
-            liq_usd, liq_side = self.analyze_liquidations(liqs)
+            # Parallel fetch: core + extended fields in one gather call
+            oi_hist, funding, ls_ratio, top_trader_ls, taker_ratio, liqs = await asyncio.gather(
+                self.get_open_interest_hist(symbol, "15m", 2),
+                self.get_funding_rate(symbol),
+                self.get_long_short_ratio(symbol),
+                self.get_top_trader_ls_ratio(symbol),
+                self.get_taker_buy_sell_ratio(symbol),
+                self.get_recent_liquidations(symbol, limit=20),
+                return_exceptions=True,
+            )
 
             # Safely unpack (gather returns exceptions as values)
-            top_trader_long_short_ratio = top_trader_long_short_ratio if isinstance(top_trader_long_short_ratio, float) else None
+            oi_hist = oi_hist if isinstance(oi_hist, list) else []
+            funding = funding if isinstance(funding, dict) else {}
+            ls_ratio = ls_ratio if isinstance(ls_ratio, list) else []
+            top_trader_long_short_ratio = top_trader_ls if isinstance(top_trader_ls, float) else None
             taker_ratio = taker_ratio if isinstance(taker_ratio, float) else None
             liqs = liqs if isinstance(liqs, list) else []
+            liq_usd, liq_side = self.analyze_liquidations(liqs)
 
             # OI trend from existing hist
             oi_trend = 'flat'

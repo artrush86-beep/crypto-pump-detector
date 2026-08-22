@@ -63,6 +63,7 @@ class SignalBot:
         self.application.add_handler(CommandHandler("ignore", self.cmd_ignore))
         self.application.add_handler(CommandHandler("unignore", self.cmd_unignore))
         self.application.add_handler(CommandHandler("ignored", self.cmd_ignored))
+        self.application.add_handler(CommandHandler("chart", self.cmd_chart))
         self.application.add_handler(CallbackQueryHandler(self.button_callback))
 
     async def cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -73,6 +74,7 @@ class SignalBot:
             "<b>Команды:</b>\n"
             "📊 /status — статус бота\n"
             "⚙️ /settings — настройки\n"
+            "📈 /chart SYMBOL — график TradingView + CoinGlass\n"
             "🔔 /alert SYMBOL % — ценовой алерт\n"
             "🙈 /ignore SYMBOL — скрыть пару\n"
             "👁 /unignore SYMBOL — вернуть пару\n"
@@ -80,7 +82,7 @@ class SignalBot:
             "🛑 /stop — поставить сканер на паузу\n"
             "▶️ /resume — продолжить сканирование\n"
             "❓ /help — помощь\n\n"
-            "Бот мониторит Binance Futures и Bybit.",
+            "Бот мониторит Binance Futures, Bybit и OKX.",
             parse_mode=ParseMode.HTML
         )
 
@@ -99,7 +101,9 @@ class SignalBot:
             "<b>Практика:</b>\n"
             "• EARLY LONG/SHORT — смотреть график и ждать подтверждение\n"
             "• CONFIRMED LONG/SHORT — уже ближе к реальному импульсу\n"
-            "• Score 4-5 — приоритет выше, но это всё равно не автосделка",
+            "• Score 4-5 — приоритет выше, но это всё равно не автосделка\n\n"
+            "<b>Быстрый доступ:</b>\n"
+            "📈 <code>/chart BTCUSDT</code> — TradingView + CoinGlass + ликвидации",
             parse_mode=ParseMode.HTML
         )
 
@@ -219,6 +223,43 @@ class SignalBot:
             f"Порог: ±{result['percent']}%\n\n"
             "Уведомление придёт и на рост, и на падение.",
             parse_mode=ParseMode.HTML,
+        )
+
+    async def cmd_chart(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show chart links for a symbol."""
+        if not context.args:
+            await update.message.reply_text(
+                "📈 <b>Быстрый график</b>\n\n"
+                "Использование: <code>/chart SYMBOL</code>\n\n"
+                "Примеры:\n"
+                "• <code>/chart BTCUSDT</code>\n"
+                "• <code>/chart ETHUSDT</code>\n"
+                "• <code>/chart SOLUSDT</code>",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        symbol = context.args[0].upper()
+        # Auto-append USDT if missing
+        if not symbol.endswith("USDT"):
+            symbol += "USDT"
+
+        await update.message.reply_text(
+            f"📈 <b>График {symbol}</b>\n\n"
+            f"<a href='https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}'>"
+            f"📊 TradingView (Binance)</a>\n"
+            f"<a href='https://www.tradingview.com/chart/?symbol=BYBIT:{symbol}'>"
+            f"📊 TradingView (Bybit)</a>\n"
+            f"<a href='https://www.tradingview.com/chart/?symbol=OKX:{symbol}'>"
+            f"📊 TradingView (OKX)</a>\n\n"
+            f"<a href='https://coinglass.com/tv/ru/Binance_{symbol}'>"
+            f"🔍 CoinGlass</a>\n"
+            f"<a href='https://www.coinglass.com/zh/LiquidationData'>"
+            f"💧 Ликвидации</a>\n"
+            f"<a href='https://binance.com/en/futures/{symbol}'>"
+            f"💹 Binance Futures</a>",
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True,
         )
 
     async def cmd_ignore(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

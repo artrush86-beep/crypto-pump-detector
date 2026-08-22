@@ -142,6 +142,14 @@ class SignalScore:
             for factor in translated_factors:
                 message += f"• {factor}\n"
 
+        # Quick chart link
+        message += (
+            f"\n<a href='https://www.tradingview.com/chart/?symbol=BINANCE:{self.symbol}'>"
+            f"📈 TradingView</a> | "
+            f"<a href='https://coinglass.com/tv/ru/Binance_{self.symbol}'>"
+            f"🔍 CoinGlass</a>"
+        )
+
         return message
 
 
