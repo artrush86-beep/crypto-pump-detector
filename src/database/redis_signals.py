@@ -147,7 +147,49 @@ class RedisSignalsStore:
         except Exception as e:
             logger.error(f"Failed to get stats from Redis: {e}")
             return {'total': 0, 'pumps': 0, 'dumps': 0, 'avg_score': 0}
-    
+
+    # ── Bot state persistence (ignored symbols, pause, etc.) ─────────────
+
+    async def save_state(self, key: str, value: str) -> bool:
+        """Persist arbitrary bot state key/value pair."""
+        if not self._connected or not self.redis:
+            return False
+        try:
+            await self.redis.setex(
+                f"state:{key}",
+                30 * 24 * 3600,  # 30 days TTL
+                value,
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save state {key}: {e}")
+            return False
+
+    async def load_state(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        """Load bot state by key."""
+        if not self._connected or not self.redis:
+            return default
+        try:
+            value = await self.redis.get(f"state:{key}")
+            return value if value is not None else default
+        except Exception as e:
+            logger.error(f"Failed to load state {key}: {e}")
+            return default
+
+    async def save_ignored_symbols(self, symbols: set) -> bool:
+        """Persist ignored symbols set."""
+        return await self.save_state("ignored_symbols", json.dumps(sorted(symbols)))
+
+    async def load_ignored_symbols(self) -> set:
+        """Load ignored symbols set."""
+        raw = await self.load_state("ignored_symbols")
+        if raw:
+            try:
+                return set(json.loads(raw))
+            except Exception:
+                pass
+        return set()
+
     async def close(self):
         """Close Redis connection."""
         if self.redis:

@@ -515,8 +515,19 @@ class BinanceClient:
 
         Liquidations endpoint costs 20 weight per call — we skip it when the
         weight budget is tight to avoid 429 rate limits.
+        Uses a 10-min TTL cache for expensive OI/L/S/funding data.
         """
         try:
+            # Check cache first (OI/L/S/funding change slowly)
+            cached = self._symbol_cache.get(symbol)
+            if cached is not None:
+                # Update timestamp and price from live ticker
+                cached.timestamp = datetime.utcnow()
+                cached.price = float(ticker.get('lastPrice', 0))
+                cached.volume_24h = float(ticker.get('volume', 0))
+                cached.price_change_24h = float(ticker.get('priceChangePercent', 0))
+                return cached
+
             fetch_liquidations = self._should_fetch_liquidations()
 
             # Parallel fetch: core fields always, liquidations conditionally
@@ -561,7 +572,7 @@ class BinanceClient:
             if ls_ratio and len(ls_ratio) > 0:
                 long_ratio = float(ls_ratio[-1].get('longAccount', 0.5))
 
-            return MarketData(
+            result = MarketData(
                 symbol=symbol,
                 price=float(ticker['lastPrice']),
                 volume_24h=float(ticker['volume']),
@@ -577,6 +588,8 @@ class BinanceClient:
                 liq_side=liq_side,
                 oi_trend=oi_trend,
             )
+            self._symbol_cache.set(symbol, result)
+            return result
         except Exception as e:
             logger.error(f"Error fetching {symbol}: {e}")
             raise

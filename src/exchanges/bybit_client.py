@@ -14,6 +14,7 @@ from src.exchanges.proxy_session import (
     mark_proxy_failure,
     mark_proxy_success,
     mask_proxy,
+    TTLCache,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,11 +38,22 @@ class BybitMarketData:
     oi_trend: Optional[str] = None
 
 
+def _safe_float(val, default: float = 0.0) -> float:
+    """Convert to float safely — returns default for empty/None/invalid."""
+    if val is None or val == '':
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
 class BybitClient:
     """Bybit V5 API client with proxy support."""
-    
+
     BASE_URL = "https://api.bybit.com"
-    
+    _symbol_cache = TTLCache(default_ttl=600)  # 10 min cache
+
     def __init__(self):
         self.session: Optional[aiohttp.ClientSession] = None
         
@@ -217,6 +229,15 @@ class BybitClient:
     
     async def _get_single_market_data(self, symbol: str, ticker: Dict) -> BybitMarketData:
         try:
+            # Check cache first
+            cached = self._symbol_cache.get(symbol)
+            if cached is not None:
+                cached.timestamp = datetime.utcnow()
+                cached.price = _safe_float(ticker.get('lastPrice'))
+                cached.volume_24h = _safe_float(ticker.get('turnover24h') or ticker.get('volume24h'))
+                cached.price_change_24h = _safe_float(ticker.get('price24hPcnt')) * 100
+                return cached
+
             # Parallel fetch: OI and L/S ratio simultaneously
             oi_hist, ls_ratio = await asyncio.gather(
                 self.get_open_interest(symbol, "15min", 2),
@@ -245,14 +266,14 @@ class BybitClient:
                 except:
                     pass
             
-            return BybitMarketData(
+            result = BybitMarketData(
                 symbol=symbol,
-                price=float(ticker.get('lastPrice', 0)),
-                volume_24h=float(ticker.get('turnover24h', ticker.get('volume24h', 0))),
+                price=_safe_float(ticker.get('lastPrice')),
+                volume_24h=_safe_float(ticker.get('turnover24h') or ticker.get('volume24h')),
                 open_interest=current_oi,
-                funding_rate=float(ticker.get('fundingRate', 0)),
+                funding_rate=_safe_float(ticker.get('fundingRate')),
                 long_short_ratio=long_ratio,
-                price_change_24h=float(ticker.get('price24hPcnt', 0)) * 100,
+                price_change_24h=_safe_float(ticker.get('price24hPcnt')) * 100,
                 timestamp=datetime.utcnow(),
                 # Extended: oi_trend computed above; others not available on Bybit public API
                 oi_trend=oi_trend,
@@ -261,6 +282,8 @@ class BybitClient:
                 recent_liquidations_usd=None,
                 liq_side=None,
             )
+            self._symbol_cache.set(symbol, result)
+            return result
         except Exception as e:
             logger.error(f"Error fetching Bybit {symbol}: {e}")
             raise

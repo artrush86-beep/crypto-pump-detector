@@ -189,7 +189,11 @@ class SignalsAPI:
                 "running": running,
                 "scan_paused": scan_paused,
                 "signals_count": len(self.signals),
-                "last_scan": stats.get('last_scan', None),
+                "last_scan": (
+                    stats['last_scan'].isoformat()
+                    if hasattr(stats.get('last_scan'), 'isoformat')
+                    else str(stats.get('last_scan', None))
+                ),
                 "pairs_count": stats.get('pairs_count', 0),
                 "exchanges": {
                     name: len(syms)

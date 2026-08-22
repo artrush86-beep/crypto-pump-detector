@@ -282,6 +282,18 @@ class SignalsDatabase:
             await db.commit()
             logger.info("Ignored symbol added: %s", symbol.upper())
 
+    async def add_ignored_symbols_batch(self, symbols: set) -> None:
+        """Replace entire ignored symbols set in one transaction."""
+        await self._init_db()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("DELETE FROM ignored_symbols")
+            if symbols:
+                await db.executemany(
+                    "INSERT INTO ignored_symbols (symbol) VALUES (?)",
+                    [(s.upper(),) for s in symbols],
+                )
+            await db.commit()
+
     async def remove_ignored_symbol(self, symbol: str) -> None:
         """Remove symbol from ignore list."""
         await self._init_db()

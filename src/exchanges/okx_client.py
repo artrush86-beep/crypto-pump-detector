@@ -20,6 +20,7 @@ from src.exchanges.proxy_session import (
     mark_proxy_failure,
     mark_proxy_success,
     mask_proxy,
+    TTLCache,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ class OKXClient:
     """OKX V5 API client with proxy support."""
 
     BASE_URL = "https://www.okx.com"
+    _symbol_cache = TTLCache(default_ttl=600)  # 10 min cache
 
     def __init__(self):
         self.session: Optional[aiohttp.ClientSession] = None
@@ -266,8 +268,8 @@ class OKXClient:
         )
 
         # Per-symbol enrichment in small batches to avoid rate limits
-        for i in range(0, len(candidates), 5):
-            batch = candidates[i : i + 5]
+        for i in range(0, len(candidates), 10):
+            batch = candidates[i : i + 10]
             tasks = [
                 self._get_single_market_data(sym, ticker)
                 for sym, ticker in batch
@@ -279,7 +281,7 @@ class OKXClient:
                     result[sym] = res
 
             if i + 5 < len(candidates):
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(1.0)  # OKX has strict rate limits
 
         return result
 
@@ -291,6 +293,14 @@ class OKXClient:
         ccy = symbol.replace("USDT", "")  # BTCUSDT → BTC
 
         try:
+            # Check cache first
+            cached = self._symbol_cache.get(symbol)
+            if cached is not None:
+                cached.timestamp = datetime.utcnow()
+                cached.price = float(ticker.get("last", 0) or 0)
+                return cached
+
+
             # Parallel fetch of OI and funding
             oi_data, funding_rate, long_ratio = await asyncio.gather(
                 self.get_open_interest(okx_id),
@@ -337,7 +347,7 @@ class OKXClient:
             # volCcy24h = base currency volume; volCcyQuote24h = quote (USDT) volume
             volume_24h = float(ticker.get("volCcy24h", ticker.get("vol24h", 0)) or 0)
 
-            return OKXMarketData(
+            result = OKXMarketData(
                 symbol=symbol,
                 price=last_price,
                 volume_24h=volume_24h,
@@ -353,6 +363,8 @@ class OKXClient:
                 recent_liquidations_usd=None,
                 liq_side=None,
             )
+            self._symbol_cache.set(symbol, result)
+            return result
 
         except Exception as e:
             logger.error("Error fetching OKX %s: %s", symbol, e)

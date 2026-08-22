@@ -172,13 +172,31 @@ class PumpDetectorApp:
         return ordered[:settings.TOP_N_SYMBOLS]
 
     async def _load_persistent_state(self) -> None:
-        """Load ignore list and paused state from the database."""
+        """Load ignore list and paused state.
+
+        Tries Redis first (survives Railway restarts), falls back to SQLite.
+        """
+        from src.database.redis_signals import redis_store
+
+        if redis_store._connected:
+            try:
+                self.ignored_symbols = await redis_store.load_ignored_symbols()
+                paused_raw = await redis_store.load_state("scan_paused", "0")
+                self.scan_paused = paused_raw == "1"
+                logger.info(
+                    "Loaded state from Redis: ignored=%s paused=%s",
+                    len(self.ignored_symbols), self.scan_paused,
+                )
+                return
+            except Exception as e:
+                logger.warning(f"Redis state load failed, falling back to SQLite: {e}")
+
+        # Fallback: SQLite (ephemeral on Railway)
         self.ignored_symbols = set(await self.db.get_ignored_symbols())
         self.scan_paused = (await self.db.get_bot_state("scan_paused", "0")) == "1"
         logger.info(
-            "Loaded state: ignored=%s paused=%s",
-            len(self.ignored_symbols),
-            self.scan_paused,
+            "Loaded state from SQLite: ignored=%s paused=%s",
+            len(self.ignored_symbols), self.scan_paused,
         )
 
     def _get_latest_symbol_snapshot(self, symbol: str) -> Tuple[Optional[str], Optional[Any]]:
@@ -228,22 +246,41 @@ class PumpDetectorApp:
             "percent": percent,
         }
 
+    async def _persist_state(self) -> None:
+        """Save current state to Redis (survives restarts) and SQLite (fallback)."""
+        from src.database.redis_signals import redis_store
+
+        # Always update in-memory
+        # SQLite fallback
+        await self.db.add_ignored_symbols_batch(self.ignored_symbols)
+        await self.db.set_bot_state("scan_paused", "1" if self.scan_paused else "0")
+
+        # Redis (persistent across Railway restarts)
+        if redis_store._connected:
+            try:
+                await redis_store.save_ignored_symbols(self.ignored_symbols)
+                await redis_store.save_state(
+                    "scan_paused", "1" if self.scan_paused else "0"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to persist state to Redis: {e}")
+
     async def ignore_symbol(self, symbol: str) -> None:
         upper_symbol = symbol.upper()
-        await self.db.add_ignored_symbol(upper_symbol)
         self.ignored_symbols.add(upper_symbol)
+        await self._persist_state()
 
     async def unignore_symbol(self, symbol: str) -> None:
         upper_symbol = symbol.upper()
-        await self.db.remove_ignored_symbol(upper_symbol)
         self.ignored_symbols.discard(upper_symbol)
+        await self._persist_state()
 
     async def list_ignored_symbols(self) -> List[str]:
         return sorted(self.ignored_symbols)
 
     async def set_scan_paused(self, paused: bool) -> None:
         self.scan_paused = paused
-        await self.db.set_bot_state("scan_paused", "1" if paused else "0")
+        await self._persist_state()
 
     def runtime_status(self) -> Dict[str, Any]:
         """Snapshot for Telegram commands."""
@@ -440,8 +477,12 @@ class PumpDetectorApp:
             if bot and deduped:
                 logger.info(f"Sending {len(deduped)} signals to Telegram")
                 await bot.send_signals_batch(deduped)
-            elif not deduped:
-                logger.info("No signals to send after filtering")
+            elif not all_signals:
+                logger.info(
+                    "No signals detected — normal on first scan (need baseline data from previous scan)"
+                )
+            else:
+                logger.info("Signals found but filtered out (ignored symbols or deduplication)")
             
             # Check price alerts
             await self._check_price_alerts(exchange_name, data, bot)
@@ -449,7 +490,13 @@ class PumpDetectorApp:
             self.stats['last_scan'] = datetime.utcnow()
             
         except Exception as e:
-            error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            error_msg = str(e).strip()
+            if isinstance(e, asyncio.TimeoutError):
+                error_detail = f"TimeoutError: {exchange_name} API timed out (all proxies failed or network issue)"
+            elif error_msg:
+                error_detail = f"{type(e).__name__}: {error_msg}"
+            else:
+                error_detail = f"{type(e).__name__}: (no details)"
             logger.error(f"Error scanning {exchange_name}: {error_detail}")
             if self._should_notify_error(exchange_name, error_detail):
                 await bot.send_error(f"{exchange_name} scan error: {error_detail[:160]}")
@@ -524,11 +571,16 @@ class PumpDetectorApp:
 
                 start_time = time.time()
                 
-                # Scan ALL exchanges in parallel — each has its own client/pool
+                # Scan ALL exchanges with staggered start to avoid rate limits.
+                # Binance first (likely to fail fast without proxies),
+                # then Bybit/OKX 2s later to spread API load.
                 exchange_names = settings.exchanges_list
-                scan_tasks = [
-                    self.scan_exchange(name, bot) for name in exchange_names
-                ]
+                scan_tasks = []
+                for idx, name in enumerate(exchange_names):
+                    if idx > 0:
+                        await asyncio.sleep(2)  # stagger start
+                    scan_tasks.append(self.scan_exchange(name, bot))
+                # Wait for all to complete
                 scan_results = await asyncio.gather(*scan_tasks, return_exceptions=True)
                 
                 for name, result in zip(exchange_names, scan_results):
@@ -569,6 +621,53 @@ class PumpDetectorApp:
                 
             except Exception as e:
                 logger.error(f"Status loop error: {e}")
+
+    async def _symbol_refresh_loop(self):
+        """Refresh exchange symbol lists every 6 hours.
+
+        If an exchange was down at startup, its symbols list stays empty
+        until container restart.  This loop fixes that by periodically
+        re-fetching and updating the live symbol sets.
+        """
+        REFRESH_INTERVAL = 6 * 3600  # 6 hours
+        while self.running:
+            try:
+                await asyncio.sleep(REFRESH_INTERVAL)
+                logger.info("Refreshing exchange symbol lists...")
+
+                for exchange_name in settings.exchanges_list:
+                    try:
+                        if exchange_name == "binance":
+                            async with BinanceClient() as client:
+                                symbols = await client.get_all_symbols()
+                        elif exchange_name == "bybit":
+                            async with BybitClient() as client:
+                                symbols = await client.get_all_symbols()
+                        elif exchange_name == "okx":
+                            async with OKXClient() as client:
+                                symbols = await client.get_all_symbols()
+                        else:
+                            continue
+
+                        selected = self._select_top_symbols(symbols)
+                        old_count = len(self.exchange_symbols.get(exchange_name, []))
+                        self.exchange_symbols[exchange_name] = selected
+                        self.stats['pairs_count'] = len(
+                            set().union(*self.exchange_symbols.values())
+                        )
+                        logger.info(
+                            "Refreshed %s: %d → %d symbols",
+                            exchange_name, old_count, len(selected),
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to refresh %s symbols: %s",
+                            exchange_name, e,
+                        )
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Symbol refresh loop error: {e}")
     
     async def run(self):
         """Main entry point."""
@@ -618,10 +717,11 @@ class PumpDetectorApp:
                 self.running = True
                 self.start_time = datetime.utcnow()
                 
-                # Run main loops (bot + API server + Telegram polling)
+                # Run main loops (bot + API server + Telegram polling + symbol refresh)
                 await asyncio.gather(
                     self.run_scan_loop(bot),
                     self._status_loop(bot),
+                    self._symbol_refresh_loop(),
                     bot.application.updater.start_polling(),
                     return_exceptions=True
                 )
