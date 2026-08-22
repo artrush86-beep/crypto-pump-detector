@@ -31,16 +31,14 @@ class Settings(BaseSettings):
     OI_CHANGE_THRESHOLD: float = 5.0
     PRICE_CHANGE_THRESHOLD: float = 1.0
     VOLUME_CHANGE_THRESHOLD: float = 50.0
-    MIN_MARKET_CAP: float = 200_000
-    
-    # Time intervals (seconds)
-    SCAN_INTERVAL: int = 180
+    MIN_MARKET_CAP: float = 200_000    # Time intervals (seconds)
+    SCAN_INTERVAL: int = 500
     PRICE_CHECK_INTERVAL: int = 60
     LOOKBACK_WINDOW: int = 900
-    
+
     # Signal scoring
-    MIN_SIGNAL_SCORE: int = 3.0
-    EARLY_SIGNAL_MIN_SCORE: float = 3.0
+    MIN_SIGNAL_SCORE: int = 3
+    EARLY_SIGNAL_MIN_SCORE: float = 2.5
     ENABLE_EARLY_SIGNALS: bool = True
     SIGNAL_COOLDOWN_SECONDS: int = 1800
     EARLY_SIGNAL_COOLDOWN_SECONDS: int = 900
@@ -55,7 +53,7 @@ class Settings(BaseSettings):
     # Exchange settings — accepts JSON list OR comma-separated string
     # e.g. '["binance","bybit","okx"]' OR 'binance,bybit,okx'
     EXCHANGES: str = "binance,bybit,okx"
-    TOP_N_SYMBOLS: int = 300
+    TOP_N_SYMBOLS: int = 500
     
     # Database
     DB_PATH: str = "data/signals.db"
