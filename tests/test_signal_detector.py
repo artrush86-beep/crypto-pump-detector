@@ -183,7 +183,11 @@ class TestConfirmedPump:
         )
         assert sig_with_neg is not None
         assert sig_with_pos is not None
-        assert sig_with_pos.score == sig_with_neg.score - 0.5
+        # Negative funding: +1, positive funding: -0.5 → diff = 1.5
+        assert sig_with_pos.score == sig_with_neg.score - 1.5
+        # Explicitly verify both scores
+        assert sig_with_neg.score == 5.0  # 1+1+1+1+1
+        assert sig_with_pos.score == 3.5  # 1+1+1-0.5+1
 
     def test_penalty_overcrowded_longs_on_pump(self):
         """L/S > 2.0 penalises PUMP score."""

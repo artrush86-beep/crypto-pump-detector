@@ -50,22 +50,83 @@ class MarketData:
     oi_trend: Optional[str] = None                       # 'growing'|'shrinking'|'flat'
 
 
+# ── Binance weight budget ────────────────────────────────────────────────
+# Per-IP weight limit for Futures API: 2400 / minute
+# We track usage and adapt batch size + sleep dynamically.
+BINANCE_WEIGHT_LIMIT = 2400
+WEIGHT_CRITICAL_THRESHOLD = 0.80  # start slowing down at 80%
+WEIGHT_DANGER_THRESHOLD = 0.90   # skip expensive calls at 90%
+
+# Approximate weight cost per endpoint (Binance docs)
+WEIGHT_COSTS = {
+    "/fapi/v1/ticker/24hr": 40,           # batch ticker (once per scan)
+    "/futures/data/openInterestHist": 1,
+    "/fapi/v1/premiumIndex": 1,            # funding rate
+    "/futures/data/globalLongShortAccountRatio": 1,
+    "/futures/data/topLongShortPositionRatio": 1,
+    "/futures/data/takerBuySellRatio": 1,
+    "/futures/data/takerbuybaseAssetVol": 1,
+    "/futures/data/takersellbaseAssetVol": 1,
+    "/fapi/v1/allForceOrders": 20,         # liquidations — VERY expensive!
+}
+
+# Weight cost per symbol when fetching full market data
+WEIGHT_PER_SYMBOL_FULL = 25    # OI(1)+funding(1)+LS(1)+top_trader(1)+taker(1)+liqs(20)
+WEIGHT_PER_SYMBOL_NO_LIQ = 5   # OI(1)+funding(1)+LS(1)+top_trader(1)+taker(1)
+
+
 class BinanceClient:
-    """Binance USDT-M Futures API client with proxy support."""
-    
+    """Binance USDT-M Futures API client with proxy support.
+
+    Features rate-limit aware batching:
+      - Tracks weight usage from response headers
+      - Dynamically adjusts batch size based on remaining budget
+      - Skips expensive endpoints (liquidations=20 weight) when budget is tight
+      - Sleeps proportionally to remaining headroom
+    """
+
     BASE_URL = "https://fapi.binance.com"
-    
+
     def __init__(self):
         self.session: Optional[aiohttp.ClientSession] = None
         self.weight_used = 0
-        
+        self._weight_budget_remaining = BINANCE_WEIGHT_LIMIT
+
     async def __aenter__(self):
         self.session = create_session()
         return self
-        
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.session:
             await self.session.close()
+
+    def _weight_headroom(self) -> float:
+        """Fraction of weight budget still available (0.0–1.0)."""
+        return max(0.0, 1.0 - (self.weight_used / BINANCE_WEIGHT_LIMIT))
+
+    def _should_fetch_liquidations(self) -> bool:
+        """Decide whether to fetch liquidations based on weight budget.
+
+        Liquidations cost 20 weight per symbol — that's 6000 weight for 300 symbols,
+        which is more than the entire budget.  We only fetch them when we have
+        plenty of headroom remaining.
+        """
+        return self._weight_headroom() > 0.5
+
+    def _adaptive_batch_size(self, default: int = 10) -> int:
+        """Return batch size scaled to remaining weight budget.
+
+        When headroom is high → use full batch size.
+        When headroom drops → shrink batches to avoid 429s.
+        """
+        headroom = self._weight_headroom()
+        if headroom > 0.7:
+            return default
+        if headroom > 0.5:
+            return max(3, default // 2)
+        if headroom > 0.3:
+            return max(2, default // 4)
+        return 1  # last resort: one symbol at a time
     
     @backoff.on_exception(
         backoff.expo,
@@ -110,6 +171,15 @@ class BinanceClient:
                     response.raise_for_status()
                     mark_proxy_success("binance", proxy)
                     self.weight_used = int(response.headers.get('X-MBX-USED-WEIGHT-1M', 0))
+                    self._weight_budget_remaining = max(
+                        0, BINANCE_WEIGHT_LIMIT - self.weight_used
+                    )
+                    if self.weight_used > BINANCE_WEIGHT_LIMIT * 0.75:
+                        logger.warning(
+                            "Binance weight budget high: %d/%d (%.0f%% used)",
+                            self.weight_used, BINANCE_WEIGHT_LIMIT,
+                            self.weight_used / BINANCE_WEIGHT_LIMIT * 100,
+                        )
                     return await response.json()
             except (
                 aiohttp.ClientHttpProxyError,
@@ -399,45 +469,77 @@ class BinanceClient:
     async def get_market_data_batch(self, symbols: List[str]) -> Dict[str, MarketData]:
         result = {}
         all_tickers = {t['symbol']: t for t in await self.get_all_tickers()}
-        
-        for i in range(0, len(symbols), 10):
-            batch = symbols[i:i+10]
+
+        i = 0
+        while i < len(symbols):
+            batch_size = self._adaptive_batch_size(default=10)
+            batch = symbols[i : i + batch_size]
             tasks = []
             for symbol in batch:
                 if symbol in all_tickers:
                     tasks.append(self._get_single_market_data(symbol, all_tickers[symbol]))
-            
+
             batch_results = await asyncio.gather(*tasks, return_exceptions=True)
             for symbol, data in zip(batch, batch_results):
                 if isinstance(data, MarketData):
                     result[symbol] = data
-            
-            if i + 10 < len(symbols):
-                await asyncio.sleep(0.5)
-        
+
+            i += batch_size
+
+            # Dynamic sleep: proportional to how full the weight budget is
+            headroom = self._weight_headroom()
+            if i < len(symbols):
+                if headroom < 0.2:
+                    # Nearly exhausted — long sleep to let weight reset
+                    sleep_time = 5.0
+                    logger.warning(
+                        "Binance weight nearly exhausted (%.0f%% used), sleeping %.1fs",
+                        (1 - headroom) * 100, sleep_time,
+                    )
+                elif headroom < 0.5:
+                    sleep_time = 2.0
+                elif headroom < 0.7:
+                    sleep_time = 1.0
+                else:
+                    sleep_time = 0.3
+                await asyncio.sleep(sleep_time)
+
         return result
     
     async def _get_single_market_data(self, symbol: str, ticker: Dict) -> MarketData:
-        """Fetch all data for one symbol, including new metrics."""
+        """Fetch all data for one symbol, including new metrics.
+
+        Liquidations endpoint costs 20 weight per call — we skip it when the
+        weight budget is tight to avoid 429 rate limits.
+        """
         try:
-            # Parallel fetch: core + extended fields in one gather call
-            oi_hist, funding, ls_ratio, top_trader_ls, taker_ratio, liqs = await asyncio.gather(
+            fetch_liquidations = self._should_fetch_liquidations()
+
+            # Parallel fetch: core fields always, liquidations conditionally
+            base_tasks = [
                 self.get_open_interest_hist(symbol, "15m", 2),
                 self.get_funding_rate(symbol),
                 self.get_long_short_ratio(symbol),
                 self.get_top_trader_ls_ratio(symbol),
                 self.get_taker_buy_sell_ratio(symbol),
-                self.get_recent_liquidations(symbol, limit=20),
-                return_exceptions=True,
-            )
+            ]
+            if fetch_liquidations:
+                base_tasks.append(self.get_recent_liquidations(symbol, limit=20))
 
-            # Safely unpack (gather returns exceptions as values)
-            oi_hist = oi_hist if isinstance(oi_hist, list) else []
-            funding = funding if isinstance(funding, dict) else {}
-            ls_ratio = ls_ratio if isinstance(ls_ratio, list) else []
-            top_trader_long_short_ratio = top_trader_ls if isinstance(top_trader_ls, float) else None
-            taker_ratio = taker_ratio if isinstance(taker_ratio, float) else None
-            liqs = liqs if isinstance(liqs, list) else []
+            base_results = await asyncio.gather(*base_tasks, return_exceptions=True)
+
+            # Safely unpack core results
+            oi_hist = base_results[0] if isinstance(base_results[0], list) else []
+            funding = base_results[1] if isinstance(base_results[1], dict) else {}
+            ls_ratio = base_results[2] if isinstance(base_results[2], list) else []
+            top_trader_long_short_ratio = base_results[3] if isinstance(base_results[3], float) else None
+            taker_ratio = base_results[4] if isinstance(base_results[4], float) else None
+
+            # Unpack liquidations (last result if fetched, else empty)
+            if fetch_liquidations and len(base_results) > 5:
+                liqs = base_results[5] if isinstance(base_results[5], list) else []
+            else:
+                liqs = []
             liq_usd, liq_side = self.analyze_liquidations(liqs)
 
             # OI trend from existing hist
@@ -454,7 +556,7 @@ class BinanceClient:
             long_ratio = 1.0
             if ls_ratio and len(ls_ratio) > 0:
                 long_ratio = float(ls_ratio[-1].get('longAccount', 0.5))
-            
+
             return MarketData(
                 symbol=symbol,
                 price=float(ticker['lastPrice']),
