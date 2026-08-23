@@ -215,6 +215,11 @@ class SignalsAPI:
                     if controller and hasattr(controller, 'metrics')
                     else "unknown"
                 ),
+                "proxy_pool": (
+                    controller.proxy_checker.get_pool_stats()
+                    if controller and hasattr(controller, 'proxy_checker')
+                    else {}
+                ),
             },
             headers={"Access-Control-Allow-Origin": "*"}
         )

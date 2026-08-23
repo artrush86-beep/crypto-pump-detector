@@ -17,6 +17,7 @@ from src.exchanges.gate_client import GateClient
 from src.exchanges.mexc_client import MEXCClient
 from src.exchanges.coingecko_client import CoinGeckoClient
 from src.exchanges.ws_manager import ExchangeWSManager
+from src.exchanges.proxy_checker import ProxyHealthChecker
 from src.metrics.metrics import MetricsTracker
 from src.detector.signal_detector import SignalDetector
 from src.bot.telegram_bot import SignalBot
@@ -104,6 +105,8 @@ class PumpDetectorApp:
         self.ws_manager = ExchangeWSManager()
         # Metrics tracker for observability
         self.metrics = MetricsTracker(settings.exchanges_list)
+        # Proxy health checker
+        self.proxy_checker = ProxyHealthChecker()
         logger.info(f"Signals API initialized on port {port}, database ready")
 
     def _base_symbol(self, symbol: str) -> str:
@@ -435,8 +438,11 @@ class PumpDetectorApp:
         logger.info("Selected pairs: %s Total unique=%s", counts_str, len(self.all_symbols))
 
         # Start WebSocket connections for real-time tickers
-        okx_symbols = self.exchange_symbols.get('okx', [])
-        self.ws_manager.set_okx_symbols(okx_symbols)
+        for name in ("okx", "bitget", "gateio"):
+            syms = self.exchange_symbols.get(name, [])
+            setter = getattr(self.ws_manager, f"set_{name}_symbols", None)
+            if setter and syms:
+                setter(syms)
         await self.ws_manager.start()
         logger.info("WebSocket manager started")
         
@@ -455,7 +461,9 @@ class PumpDetectorApp:
 
             # Check if we have real-time WS data for this exchange
             ws_tickers = self.ws_manager.get_tickers(exchange_name)
-            use_ws = bool(ws_tickers) and exchange_name in ("binance", "bybit", "okx")
+            use_ws = bool(ws_tickers) and exchange_name in (
+                "binance", "bybit", "okx", "bitget", "gateio"
+            )
 
             # Exchange client dispatch
             _client_map = {
@@ -784,6 +792,9 @@ class PumpDetectorApp:
             
             # Initialize market data
             await self.initialize()
+
+            # Start proxy health checker
+            await self.proxy_checker.start()
             
             # Start bot with API reference for signal tracking
             async with SignalBot(signals_api=self.signals_api, controller=self) as bot:
@@ -813,6 +824,9 @@ class PumpDetectorApp:
             # Stop WebSocket connections
             await self.ws_manager.stop()
             logger.info("WebSocket connections closed")
+            # Stop proxy health checker
+            await self.proxy_checker.stop()
+            logger.info("Proxy health checker stopped")
             # Cleanup API server
             if 'api_runner' in locals():
                 await api_runner.cleanup()

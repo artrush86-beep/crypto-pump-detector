@@ -340,6 +340,254 @@ class _OKXWS:
                 self._reconnect_delay = min(self._reconnect_delay * 2, 60)
 
 
+
+# ────────────────────────────────────────────────────────────────────────────
+#  Bitget WebSocket: v2/public — batch subscribe per-symbol
+# ────────────────────────────────────────────────────────────────────────────
+
+class _BitgetWS:
+    """Bitget V2 WebSocket: ticker channel per-symbol in batches."""
+
+    URL = "wss://ws.bitget.com/v2/ws/public"
+    BATCH_SIZE = 100
+    PING_INTERVAL = 25
+    RECONNECT_DELAY_BASE = 1
+
+    def __init__(self, ticker_callback: Callable[[str, Dict[str, WSTicker]], Awaitable[None]]):
+        self._callback = ticker_callback
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+        self._reconnect_delay = self.RECONNECT_DELAY_BASE
+        self._symbols: list = []
+
+    def set_symbols(self, symbols: list):
+        self._symbols = symbols
+
+    async def start(self):
+        self._running = True
+        self._task = asyncio.create_task(self._run_loop())
+
+    async def stop(self):
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    async def _run_loop(self):
+        while self._running:
+            try:
+                async with websockets.connect(
+                    self.URL,
+                    ping_interval=self.PING_INTERVAL,
+                    ping_timeout=10,
+                    close_timeout=5,
+                ) as ws:
+                    logger.info("Bitget WS connected")
+                    self._reconnect_delay = self.RECONNECT_DELAY_BASE
+
+                    # Subscribe in batches
+                    symbols = self._symbols[:300]
+                    for i in range(0, len(symbols), self.BATCH_SIZE):
+                        batch = symbols[i:i + self.BATCH_SIZE]
+                        await ws.send(json.dumps({
+                            "op": "subscribe",
+                            "args": [
+                                {"instType": "USDT-FUTURES", "channel": "ticker", "instId": sym}
+                                for sym in batch
+                            ],
+                        }))
+                        logger.debug("Bitget WS subscribed batch %d-%d", i, i + len(batch))
+                        await asyncio.sleep(0.1)
+
+                    logger.info("Bitget WS subscribed %d symbols", len(symbols))
+
+                    async for raw in ws:
+                        try:
+                            msg = json.loads(raw)
+
+                            # Skip subscription confirmations
+                            if msg.get("event") in ("subscribe", "unsubscribe", "error"):
+                                if msg.get("event") == "error":
+                                    logger.warning("Bitget WS error: %s", msg.get("msg"))
+                                continue
+
+                            # Process ticker data
+                            data = msg.get("data", {})
+                            tickers = {}
+                            if isinstance(data, dict) and data.get("symbol"):
+                                sym = data["symbol"]
+                                if sym.endswith("USDT"):
+                                    tickers[sym] = WSTicker(
+                                        symbol=sym,
+                                        price=float(data.get("lastPr", 0) or 0),
+                                        volume_24h=float(data.get("usdtVolume", 0) or 0),
+                                        price_change_24h=float(data.get("changeUtc24h", 0) or 0) * 100,
+                                        funding_rate=float(data.get("fundingRate", 0) or 0),
+                                        timestamp=time.time(),
+                                        exchange="bitget",
+                                    )
+                            elif isinstance(data, list):
+                                for d in data:
+                                    if isinstance(d, dict) and d.get("symbol", "").endswith("USDT"):
+                                        sym = d["symbol"]
+                                        tickers[sym] = WSTicker(
+                                            symbol=sym,
+                                            price=float(d.get("lastPr", 0) or 0),
+                                            volume_24h=float(d.get("usdtVolume", 0) or 0),
+                                            price_change_24h=float(d.get("changeUtc24h", 0) or 0) * 100,
+                                            funding_rate=float(d.get("fundingRate", 0) or 0),
+                                            timestamp=time.time(),
+                                            exchange="bitget",
+                                        )
+
+                            if tickers:
+                                await self._callback("bitget", tickers)
+
+                        except (json.JSONDecodeError, ValueError, TypeError) as e:
+                            logger.debug("Bitget WS parse error: %s", e)
+
+            except (ConnectionClosed, ConnectionClosedError, InvalidHandshake, OSError) as e:
+                logger.warning("Bitget WS disconnected: %s — reconnecting in %ds", e, self._reconnect_delay)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Bitget WS error: %s — reconnecting in %ds", e, self._reconnect_delay)
+
+            if self._running:
+                await asyncio.sleep(self._reconnect_delay)
+                self._reconnect_delay = min(self._reconnect_delay * 2, 60)
+
+
+# ────────────────────────────────────────────────────────────────────────────
+#  Gate.io WebSocket: futures.tickers — batch subscribe per-symbol
+# ────────────────────────────────────────────────────────────────────────────
+
+class _GateWS:
+    """Gate.io V4 WebSocket: futures.tickers channel."""
+
+    URL = "wss://fx-ws.gateio.ws/v4/ws/usdt"
+    BATCH_SIZE = 200
+    PING_INTERVAL = 25
+    RECONNECT_DELAY_BASE = 1
+
+    def __init__(self, ticker_callback: Callable[[str, Dict[str, WSTicker]], Awaitable[None]]):
+        self._callback = ticker_callback
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+        self._reconnect_delay = self.RECONNECT_DELAY_BASE
+        self._symbols: list = []
+
+    def set_symbols(self, symbols: list):
+        self._symbols = symbols
+
+    async def start(self):
+        self._running = True
+        self._task = asyncio.create_task(self._run_loop())
+
+    async def stop(self):
+        self._running = False
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    @staticmethod
+    def _to_gate_id(symbol: str) -> str:
+        """BTCUSDT → BTC_USDT"""
+        if symbol.endswith("USDT"):
+            return f"{symbol[:-4]}_USDT"
+        return symbol
+
+    @staticmethod
+    def _from_gate_id(contract: str) -> str:
+        """BTC_USDT → BTCUSDT"""
+        return contract.replace("_", "")
+
+    async def _run_loop(self):
+        while self._running:
+            try:
+                async with websockets.connect(
+                    self.URL,
+                    ping_interval=self.PING_INTERVAL,
+                    ping_timeout=10,
+                    close_timeout=5,
+                ) as ws:
+                    logger.info("Gate.io WS connected")
+                    self._reconnect_delay = self.RECONNECT_DELAY_BASE
+
+                    # Subscribe in batches
+                    gate_ids = [self._to_gate_id(s) for s in self._symbols[:300]]
+                    for i in range(0, len(gate_ids), self.BATCH_SIZE):
+                        batch = gate_ids[i:i + self.BATCH_SIZE]
+                        await ws.send(json.dumps({
+                            "time": int(time.time()),
+                            "channel": "futures.tickers",
+                            "event": "subscribe",
+                            "payload": batch,
+                        }))
+                        logger.debug("Gate.io WS subscribed batch %d-%d", i, i + len(batch))
+                        await asyncio.sleep(0.1)
+
+                    logger.info("Gate.io WS subscribed %d symbols", len(gate_ids))
+
+                    async for raw in ws:
+                        try:
+                            msg = json.loads(raw)
+                            ch = msg.get("channel")
+                            ev = msg.get("event")
+
+                            if ch != "futures.tickers" or ev != "update":
+                                continue
+
+                            result = msg.get("result", [])
+                            tickers = {}
+                            items = result if isinstance(result, list) else [result] if isinstance(result, dict) else []
+
+                            for d in items:
+                                if not isinstance(d, dict):
+                                    continue
+                                contract = d.get("contract", "")
+                                if not contract.endswith("_USDT"):
+                                    continue
+
+                                sym = self._from_gate_id(contract)
+                                last_price = float(d.get("last", 0) or 0)
+                                vol_quote = float(d.get("volume_24h_quote", 0) or 0)
+                                change_pct = float(d.get("change_percentage", 0) or 0)
+
+                                tickers[sym] = WSTicker(
+                                    symbol=sym,
+                                    price=last_price,
+                                    volume_24h=vol_quote,
+                                    price_change_24h=change_pct,
+                                    funding_rate=float(d.get("funding_rate", 0) or 0),
+                                    timestamp=time.time(),
+                                    exchange="gateio",
+                                )
+
+                            if tickers:
+                                await self._callback("gateio", tickers)
+
+                        except (json.JSONDecodeError, ValueError, TypeError) as e:
+                            logger.debug("Gate.io WS parse error: %s", e)
+
+            except (ConnectionClosed, ConnectionClosedError, InvalidHandshake, OSError) as e:
+                logger.warning("Gate.io WS disconnected: %s — reconnecting in %ds", e, self._reconnect_delay)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Gate.io WS error: %s — reconnecting in %ds", e, self._reconnect_delay)
+
+            if self._running:
+                await asyncio.sleep(self._reconnect_delay)
+                self._reconnect_delay = min(self._reconnect_delay * 2, 60)
+
+
 # ────────────────────────────────────────────────────────────────────────────
 #  Central WebSocket Manager
 # ────────────────────────────────────────────────────────────────────────────
@@ -373,11 +621,23 @@ class ExchangeWSManager:
             self._handlers["binance"] = _BinanceWS(self._on_tickers)
             self._handlers["bybit"] = _BybitWS(self._on_tickers)
             self._handlers["okx"] = _OKXWS(self._on_tickers)
+            self._handlers["bitget"] = _BitgetWS(self._on_tickers)
+            self._handlers["gateio"] = _GateWS(self._on_tickers)
 
     def set_okx_symbols(self, symbols: list):
         """Set OKX symbols for WS subscription."""
         if "okx" in self._handlers:
             self._handlers["okx"].set_symbols(symbols)
+
+    def set_bitget_symbols(self, symbols: list):
+        """Set Bitget symbols for WS subscription."""
+        if "bitget" in self._handlers:
+            self._handlers["bitget"].set_symbols(symbols)
+
+    def set_gateio_symbols(self, symbols: list):
+        """Set Gate.io symbols for WS subscription."""
+        if "gateio" in self._handlers:
+            self._handlers["gateio"].set_symbols(symbols)
 
     async def _on_tickers(self, exchange: str, tickers: Dict[str, WSTicker]):
         """Callback when new tickers arrive from WS."""

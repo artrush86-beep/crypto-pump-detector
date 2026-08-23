@@ -98,11 +98,58 @@ def _configured_proxies(exchange_name: str) -> List[str]:
     if settings.PROXY_URL:
         proxies.append(settings.PROXY_URL)
 
+    # Add dynamic proxies (from health checker)
+    proxies.extend(_DYNAMIC_PROXIES.get(exchange, []))
+
     deduped: List[str] = []
     for proxy in proxies:
         if proxy and proxy not in deduped:
             deduped.append(proxy)
     return deduped
+
+
+def add_dynamic_proxy(exchange_name: str, proxy_url: str) -> bool:
+    """Add a proxy dynamically (from health checker). Returns True if added."""
+    exchange = exchange_name.lower()
+    if proxy_url not in _DYNAMIC_PROXIES[exchange]:
+        _DYNAMIC_PROXIES[exchange].append(proxy_url)
+        logger.info("Dynamic proxy added for %s: %s", exchange, mask_proxy(proxy_url))
+        return True
+    return False
+
+
+def remove_proxy(exchange_name: str, proxy_url: str) -> bool:
+    """Remove a proxy from the dynamic pool."""
+    exchange = exchange_name.lower()
+    before = len(_DYNAMIC_PROXIES[exchange])
+    _DYNAMIC_PROXIES[exchange] = [p for p in _DYNAMIC_PROXIES[exchange] if p != proxy_url]
+    removed = len(_DYNAMIC_PROXIES[exchange]) < before
+    if removed:
+        logger.info("Dynamic proxy removed for %s: %s", exchange, mask_proxy(proxy_url))
+    return removed
+
+
+def get_all_proxies(exchange_name: str) -> List[str]:
+    """Get all configured + dynamic proxies for an exchange."""
+    return _configured_proxies(exchange_name)
+
+
+def get_proxy_pool_stats() -> Dict[str, Dict[str, int]]:
+    """Get proxy pool statistics."""
+    stats = {}
+    for exchange in set(list(_DYNAMIC_PROXIES.keys()) + ["binance", "bybit", "okx"]):
+        all_proxies = _configured_proxies(exchange)
+        now = time.time()
+        failures = _PROXY_FAILURES[exchange]
+        active = [p for p in all_proxies if failures.get(p, 0) <= now]
+        cooldown = [p for p in all_proxies if failures.get(p, 0) > now]
+        stats[exchange] = {
+            "total": len(all_proxies),
+            "active": len(active),
+            "cooldown": len(cooldown),
+            "dynamic": len(_DYNAMIC_PROXIES.get(exchange, [])),
+        }
+    return stats
 
 
 def available_proxies(exchange_name: str) -> List[str]:
