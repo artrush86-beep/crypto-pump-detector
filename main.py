@@ -17,6 +17,7 @@ from src.exchanges.gate_client import GateClient
 from src.exchanges.mexc_client import MEXCClient
 from src.exchanges.coingecko_client import CoinGeckoClient
 from src.exchanges.ws_manager import ExchangeWSManager
+from src.metrics.metrics import MetricsTracker
 from src.detector.signal_detector import SignalDetector
 from src.bot.telegram_bot import SignalBot
 from src.api.signals_api import SignalsAPI
@@ -101,6 +102,8 @@ class PumpDetectorApp:
         self.db = SignalsDatabase()
         # WebSocket manager for real-time ticker data
         self.ws_manager = ExchangeWSManager()
+        # Metrics tracker for observability
+        self.metrics = MetricsTracker(settings.exchanges_list)
         logger.info(f"Signals API initialized on port {port}, database ready")
 
     def _base_symbol(self, symbol: str) -> str:
@@ -443,6 +446,7 @@ class PumpDetectorApp:
         bot: SignalBot
     ):
         """Scan single exchange for signals."""
+        scan_start = time.time()
         try:
             symbols = self.exchange_symbols.get(exchange_name, [])
             if not symbols:
@@ -540,10 +544,15 @@ class PumpDetectorApp:
                     len(filtered_signals), len(deduped),
                 )
 
+            # Record scan metrics
+            scan_duration = time.time() - scan_start
+            self.metrics.record_scan(exchange_name, scan_duration, len(data), len(deduped))
+
             # Send to Telegram
             if bot and deduped:
                 logger.info(f"Sending {len(deduped)} signals to Telegram")
                 await bot.send_signals_batch(deduped)
+                self.metrics.record_signals_sent(len(deduped))
             elif not all_signals:
                 logger.info(
                     "No signals detected — normal on first scan (need baseline data from previous scan)"
@@ -565,6 +574,7 @@ class PumpDetectorApp:
             else:
                 error_detail = f"{type(e).__name__}: (no details)"
             logger.error(f"Error scanning {exchange_name}: {error_detail}")
+            self.metrics.record_scan_error(exchange_name, error_detail)
             if self._should_notify_error(exchange_name, error_detail):
                 await bot.send_error(f"{exchange_name} scan error: {error_detail[:160]}")
     

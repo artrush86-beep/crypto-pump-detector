@@ -26,6 +26,8 @@ class SignalsAPI:
         self.app.router.add_get("/api/health", self.health_check)
         self.app.router.add_get("/api/stats", self.get_stats)
         self.app.router.add_get("/api/pairs", self.get_pairs)
+        self.app.router.add_get("/api/metrics", self.get_metrics)
+        self.app.router.add_get("/api/metrics/summary", self.get_metrics_summary)
         self.app.router.add_options("/api/signals", self.cors_preflight)
         self.app.router.add_options("/api/pairs", self.cors_preflight)
         # Initialize database connection
@@ -208,6 +210,11 @@ class SignalsAPI:
                     if controller and hasattr(controller, 'ws_manager')
                     else {}
                 ),
+                "health": (
+                    controller.metrics.health_status()
+                    if controller and hasattr(controller, 'metrics')
+                    else "unknown"
+                ),
             },
             headers={"Access-Control-Allow-Origin": "*"}
         )
@@ -283,6 +290,43 @@ class SignalsAPI:
             errors.append(f"SQLite: {e}")
             logger.error(f"Failed to save signal: {'; '.join(errors)}")
     
+    async def get_metrics(self, request: web.Request) -> web.Response:
+        """Prometheus-compatible metrics endpoint."""
+        controller = getattr(self, '_controller', None)
+        metrics = getattr(controller, 'metrics', None) if controller else None
+
+        if metrics:
+            metrics.record_api_request("/api/metrics")
+            return web.Response(
+                text=metrics.to_prometheus(),
+                content_type="text/plain; version=0.0.4",
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        return web.json_response(
+            {"error": "Metrics not initialized"},
+            status=503,
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
+    async def get_metrics_summary(self, request: web.Request) -> web.Response:
+        """Human-readable metrics summary for dashboard."""
+        controller = getattr(self, '_controller', None)
+        metrics = getattr(controller, 'metrics', None) if controller else None
+
+        if metrics:
+            metrics.record_api_request("/api/metrics/summary")
+            return web.json_response(
+                metrics.to_summary(),
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        return web.json_response(
+            {"error": "Metrics not initialized"},
+            status=503,
+            headers={"Access-Control-Allow-Origin": "*"},
+        )
+
     async def start(self):
         """Start the API server."""
         # Initialize Redis (optional)

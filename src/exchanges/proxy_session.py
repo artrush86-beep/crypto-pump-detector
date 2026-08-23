@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 _PROXY_FAILURES: Dict[str, Dict[str, float]] = defaultdict(dict)
 _PROXY_INDEX: Dict[str, int] = defaultdict(int)
+_DYNAMIC_PROXIES: Dict[str, List[str]] = defaultdict(list)  # exchange -> dynamic proxies
 
 
 def create_session() -> aiohttp.ClientSession:
