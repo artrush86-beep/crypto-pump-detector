@@ -388,9 +388,12 @@ class SignalBot:
         """Send startup message."""
         if not self._startup_message_sent:
             topic_info = f" (Topic: {self.thread_id})" if self.thread_id else ""
+            exchanges = settings.exchanges_list
+            exchanges_str = ", ".join(e.upper() for e in exchanges)
             await self.send_message(
                 "🤖 <b>Crypto Pump Detector Started</b>\n\n"
-                f"Monitoring top {settings.TOP_N_SYMBOLS} futures pairs per exchange\n"
+                f"📊 Exchanges: {exchanges_str}\n"
+                f"📈 Monitoring top {settings.TOP_N_SYMBOLS} futures pairs per exchange\n"
                 f"• OI Threshold: ±{settings.OI_CHANGE_THRESHOLD}%\n"
                 f"• Price Threshold: ±{settings.PRICE_CHANGE_THRESHOLD}%\n"
                 f"• Volume Threshold: +{settings.VOLUME_CHANGE_THRESHOLD}%\n"

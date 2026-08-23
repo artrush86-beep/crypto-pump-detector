@@ -211,27 +211,25 @@ class SignalsAPI:
         """Return scanning pairs configuration."""
         # Try to get real counts from controller if available
         controller = getattr(self, '_controller', None)
+        all_exchanges = ["binance", "bybit", "okx", "bitget", "gateio", "mexc"]
+        response = {
+            "total_pairs": 0,
+            "exchanges": all_exchanges,
+            "note": "Live counts from detector",
+        }
+
         if controller and hasattr(controller, 'exchange_symbols'):
             exchange_symbols = controller.exchange_symbols
-            binance_count = len(exchange_symbols.get('binance', []))
-            bybit_count = len(exchange_symbols.get('bybit', []))
-            okx_count = len(exchange_symbols.get('okx', []))
-            total = len(getattr(controller, 'all_symbols', set()))
+            for name in all_exchanges:
+                count = len(exchange_symbols.get(name, []))
+                response[f"{name}_pairs"] = count
+            response["total_pairs"] = len(getattr(controller, 'all_symbols', set()))
         else:
-            binance_count = 0
-            bybit_count = 0
-            okx_count = 0
-            total = 0
+            for name in all_exchanges:
+                response[f"{name}_pairs"] = 0
 
         return web.json_response(
-            {
-                "total_pairs": total,
-                "binance_pairs": binance_count,
-                "bybit_pairs": bybit_count,
-                "okx_pairs": okx_count,
-                "exchanges": ["binance", "bybit", "okx"],
-                "note": "Live counts from detector"
-            },
+            response,
             headers={"Access-Control-Allow-Origin": "*"}
         )
     

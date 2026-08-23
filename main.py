@@ -12,6 +12,9 @@ from config.settings import settings
 from src.exchanges.binance_client import BinanceClient
 from src.exchanges.bybit_client import BybitClient
 from src.exchanges.okx_client import OKXClient
+from src.exchanges.bitget_client import BitgetClient
+from src.exchanges.gate_client import GateClient
+from src.exchanges.mexc_client import MEXCClient
 from src.exchanges.coingecko_client import CoinGeckoClient
 from src.detector.signal_detector import SignalDetector
 from src.bot.telegram_bot import SignalBot
@@ -376,28 +379,54 @@ class PumpDetectorApp:
             error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
             logger.error(f"OKX unavailable during init: {error_detail}")
             okx_symbols = []
+
+        try:
+            async with BitgetClient() as bitget:
+                bitget_symbols = await bitget.get_all_symbols()
+                logger.info(f"Bitget: {len(bitget_symbols)} symbols")
+        except Exception as e:
+            error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            logger.error(f"Bitget unavailable during init: {error_detail}")
+            bitget_symbols = []
+
+        try:
+            async with GateClient() as gate:
+                gate_symbols = await gate.get_all_symbols()
+                logger.info(f"Gate.io: {len(gate_symbols)} symbols")
+        except Exception as e:
+            error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            logger.error(f"Gate.io unavailable during init: {error_detail}")
+            gate_symbols = []
+
+        try:
+            async with MEXCClient() as mexc:
+                mexc_symbols = await mexc.get_all_symbols()
+                logger.info(f"MEXC: {len(mexc_symbols)} symbols")
+        except Exception as e:
+            error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            logger.error(f"MEXC unavailable during init: {error_detail}")
+            mexc_symbols = []
         
         self.exchange_symbols = {
             "binance": self._select_top_symbols(binance_symbols),
             "bybit": self._select_top_symbols(bybit_symbols),
             "okx": self._select_top_symbols(okx_symbols),
+            "bitget": self._select_top_symbols(bitget_symbols),
+            "gateio": self._select_top_symbols(gate_symbols),
+            "mexc": self._select_top_symbols(mexc_symbols),
         }
-        self.latest_market_data = {"binance": {}, "bybit": {}, "okx": {}}
+        self.latest_market_data = {
+            name: {} for name in self.exchange_symbols
+        }
 
-        self.all_symbols = (
-            set(self.exchange_symbols["binance"])
-            | set(self.exchange_symbols["bybit"])
-            | set(self.exchange_symbols["okx"])
-        )
+        self.all_symbols = set()
+        for syms in self.exchange_symbols.values():
+            self.all_symbols |= set(syms)
         self.stats['pairs_count'] = len(self.all_symbols)
         
-        logger.info(
-            "Selected pairs: Binance=%s Bybit=%s OKX=%s Total unique=%s",
-            len(self.exchange_symbols["binance"]),
-            len(self.exchange_symbols["bybit"]),
-            len(self.exchange_symbols["okx"]),
-            len(self.all_symbols),
-        )
+        counts = {name: len(syms) for name, syms in self.exchange_symbols.items()}
+        counts_str = " ".join(f"{name.capitalize()}={count}" for name, count in counts.items())
+        logger.info("Selected pairs: %s Total unique=%s", counts_str, len(self.all_symbols))
         
     async def scan_exchange(
         self,
@@ -411,17 +440,20 @@ class PumpDetectorApp:
                 logger.warning("No symbols configured for %s", exchange_name)
                 return
 
-            if exchange_name == "binance":
-                async with BinanceClient() as client:
-                    data = await client.get_market_data_batch(symbols)
-            elif exchange_name == "bybit":
-                async with BybitClient() as client:
-                    data = await client.get_market_data_batch(symbols)
-            elif exchange_name == "okx":
-                async with OKXClient() as client:
-                    data = await client.get_market_data_batch(symbols)
-            else:
+            # Exchange client dispatch
+            _client_map = {
+                "binance": BinanceClient,
+                "bybit": BybitClient,
+                "okx": OKXClient,
+                "bitget": BitgetClient,
+                "gateio": GateClient,
+                "mexc": MEXCClient,
+            }
+            client_cls = _client_map.get(exchange_name)
+            if not client_cls:
                 return
+            async with client_cls() as client:
+                data = await client.get_market_data_batch(symbols)
             
             if not data:
                 logger.warning(f"No data from {exchange_name}")
@@ -637,17 +669,19 @@ class PumpDetectorApp:
 
                 for exchange_name in settings.exchanges_list:
                     try:
-                        if exchange_name == "binance":
-                            async with BinanceClient() as client:
-                                symbols = await client.get_all_symbols()
-                        elif exchange_name == "bybit":
-                            async with BybitClient() as client:
-                                symbols = await client.get_all_symbols()
-                        elif exchange_name == "okx":
-                            async with OKXClient() as client:
-                                symbols = await client.get_all_symbols()
-                        else:
+                        _refresh_map = {
+                            "binance": BinanceClient,
+                            "bybit": BybitClient,
+                            "okx": OKXClient,
+                            "bitget": BitgetClient,
+                            "gateio": GateClient,
+                            "mexc": MEXCClient,
+                        }
+                        client_cls = _refresh_map.get(exchange_name)
+                        if not client_cls:
                             continue
+                        async with client_cls() as client:
+                            symbols = await client.get_all_symbols()
 
                         selected = self._select_top_symbols(symbols)
                         old_count = len(self.exchange_symbols.get(exchange_name, []))

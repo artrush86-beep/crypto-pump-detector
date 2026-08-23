@@ -443,6 +443,18 @@
                 <div class="stat-value" id="okxPairs" style="color: #fff;">-</div>
             </div>
             <div class="stat-card">
+                <h3>Bitget Pairs</h3>
+                <div class="stat-value" id="bitgetPairs" style="color: #00d4aa;">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Gate.io Pairs</h3>
+                <div class="stat-value" id="gateioPairs" style="color: #5b6ef5;">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>MEXC Pairs</h3>
+                <div class="stat-value" id="mexcPairs" style="color: #4fc3f7;">-</div>
+            </div>
+            <div class="stat-card">
                 <h3>Last Update</h3>
                 <div class="stat-value" id="lastUpdate" style="font-size: 18px; margin-top: 8px;">-</div>
             </div>
@@ -641,12 +653,18 @@
                     document.getElementById('binancePairs').textContent = data.binance_pairs ?? '-';
                     document.getElementById('bybitPairs').textContent = data.bybit_pairs ?? '-';
                     document.getElementById('okxPairs').textContent = data.okx_pairs ?? '-';
+                    document.getElementById('bitgetPairs').textContent = data.bitget_pairs ?? '-';
+                    document.getElementById('gateioPairs').textContent = data.gateio_pairs ?? '-';
+                    document.getElementById('mexcPairs').textContent = data.mexc_pairs ?? '-';
                 }
             } catch (e) {
                 console.log('Pairs endpoint not available, using defaults');
                 document.getElementById('binancePairs').textContent = '-';
                 document.getElementById('bybitPairs').textContent = '-';
                 document.getElementById('okxPairs').textContent = '-';
+                document.getElementById('bitgetPairs').textContent = '-';
+                document.getElementById('gateioPairs').textContent = '-';
+                document.getElementById('mexcPairs').textContent = '-';
             }
         }
         

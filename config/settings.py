@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     BYBIT_PROXY_URLS: str = ""
     OKX_PROXY_URL: Optional[str] = None
     OKX_PROXY_URLS: str = ""
+    BITGET_PROXY_URLS: str = ""
+    GATEIO_PROXY_URLS: str = ""
+    MEXC_PROXY_URLS: str = ""
     PROXY_COOLDOWN_SECONDS: int = 900
     
     # API Keys (optional for most free endpoints)
@@ -51,8 +54,8 @@ class Settings(BaseSettings):
     CACHE_TTL: int = 300
     
     # Exchange settings — accepts JSON list OR comma-separated string
-    # e.g. '["binance","bybit","okx"]' OR 'binance,bybit,okx'
-    EXCHANGES: str = "binance,bybit,okx"
+    # Supported: binance, bybit, okx, bitget, gateio, mexc
+    EXCHANGES: str = "binance,bybit,okx,bitget,gateio,mexc"
     TOP_N_SYMBOLS: int = 500
     
     # Database
