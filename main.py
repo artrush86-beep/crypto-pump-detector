@@ -16,6 +16,7 @@ from src.exchanges.bitget_client import BitgetClient
 from src.exchanges.gate_client import GateClient
 from src.exchanges.mexc_client import MEXCClient
 from src.exchanges.coingecko_client import CoinGeckoClient
+from src.exchanges.ws_manager import ExchangeWSManager
 from src.detector.signal_detector import SignalDetector
 from src.bot.telegram_bot import SignalBot
 from src.api.signals_api import SignalsAPI
@@ -98,6 +99,8 @@ class PumpDetectorApp:
         self.signals_api.set_controller(self)
         # Initialize database
         self.db = SignalsDatabase()
+        # WebSocket manager for real-time ticker data
+        self.ws_manager = ExchangeWSManager()
         logger.info(f"Signals API initialized on port {port}, database ready")
 
     def _base_symbol(self, symbol: str) -> str:
@@ -427,6 +430,12 @@ class PumpDetectorApp:
         counts = {name: len(syms) for name, syms in self.exchange_symbols.items()}
         counts_str = " ".join(f"{name.capitalize()}={count}" for name, count in counts.items())
         logger.info("Selected pairs: %s Total unique=%s", counts_str, len(self.all_symbols))
+
+        # Start WebSocket connections for real-time tickers
+        okx_symbols = self.exchange_symbols.get('okx', [])
+        self.ws_manager.set_okx_symbols(okx_symbols)
+        await self.ws_manager.start()
+        logger.info("WebSocket manager started")
         
     async def scan_exchange(
         self,
@@ -440,6 +449,10 @@ class PumpDetectorApp:
                 logger.warning("No symbols configured for %s", exchange_name)
                 return
 
+            # Check if we have real-time WS data for this exchange
+            ws_tickers = self.ws_manager.get_tickers(exchange_name)
+            use_ws = bool(ws_tickers) and exchange_name in ("binance", "bybit", "okx")
+
             # Exchange client dispatch
             _client_map = {
                 "binance": BinanceClient,
@@ -452,8 +465,30 @@ class PumpDetectorApp:
             client_cls = _client_map.get(exchange_name)
             if not client_cls:
                 return
-            async with client_cls() as client:
-                data = await client.get_market_data_batch(symbols)
+
+            if use_ws:
+                # Hybrid: WS tickers (real-time) + REST OI/L/S enrichment
+                async with client_cls() as client:
+                    data = await client.get_market_data_batch(symbols)
+                # Merge: overlay WS prices onto REST data for freshness
+                merged = 0
+                for sym, md in data.items():
+                    ws_t = ws_tickers.get(sym)
+                    if ws_t and (time.time() - ws_t.timestamp) < 30:
+                        md.price = ws_t.price
+                        md.volume_24h = ws_t.volume_24h
+                        md.price_change_24h = ws_t.price_change_24h
+                        if ws_t.funding_rate is not None:
+                            md.funding_rate = ws_t.funding_rate
+                        merged += 1
+                logger.info(
+                    "%s: WS hybrid — %d symbols, %d merged with real-time prices",
+                    exchange_name, len(data), merged,
+                )
+            else:
+                # Pure REST (Bitget, Gate.io, MEXC)
+                async with client_cls() as client:
+                    data = await client.get_market_data_batch(symbols)
             
             if not data:
                 logger.warning(f"No data from {exchange_name}")
@@ -765,6 +800,9 @@ class PumpDetectorApp:
             raise
         finally:
             logger.info("Pump Detector stopped")
+            # Stop WebSocket connections
+            await self.ws_manager.stop()
+            logger.info("WebSocket connections closed")
             # Cleanup API server
             if 'api_runner' in locals():
                 await api_runner.cleanup()

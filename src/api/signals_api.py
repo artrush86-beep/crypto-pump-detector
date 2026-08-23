@@ -203,6 +203,11 @@ class SignalsAPI:
                 "trending_count": len(trending) if hasattr(trending, '__len__') else 0,
                 "trending": sorted(list(trending))[:10] if trending else [],
                 "source": "redis" if self.use_redis else "sqlite",
+                "websocket": (
+                    controller.ws_manager.get_stats()
+                    if controller and hasattr(controller, 'ws_manager')
+                    else {}
+                ),
             },
             headers={"Access-Control-Allow-Origin": "*"}
         )

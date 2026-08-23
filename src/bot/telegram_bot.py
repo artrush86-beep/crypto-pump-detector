@@ -114,11 +114,28 @@ class SignalBot:
         stats = runtime.get("stats", {})
         mode = "⏸ На паузе" if runtime.get("scan_paused") else "🟢 Сканирование активно"
 
+        # Exchange pair counts
+        exch_lines = []
+        for name in settings.exchanges_list:
+            count = len(exchange_symbols.get(name, []))
+            exch_lines.append(f"  • {name.capitalize()}: {count} pairs")
+        exch_str = "\n".join(exch_lines)
+
+        # WebSocket status
+        ws_info = ""
+        if self.controller and hasattr(self.controller, 'ws_manager'):
+            ws_stats = self.controller.ws_manager.get_stats()
+            connected = ws_stats.get('connected', {})
+            ws_parts = [f"{name}: {'✅' if ok else '❌'}" for name, ok in connected.items()]
+            ws_info = f"\n🔌 WebSocket: {' | '.join(ws_parts)}" if ws_parts else ""
+
         status_text = (
             "📊 <b>Статус бота</b>\n\n"
             f"{mode}\n"
             f"📡 Chat ID: <code>{self.chat_id}</code>\n"
             f"📋 Thread ID: <code>{self.thread_id or 'Main'}</code>\n\n"
+            f"📊 Биржи:\n{exch_str}\n"
+            f"{ws_info}\n\n"
             f"• Порог OI: ±{settings.OI_CHANGE_THRESHOLD}%\n"
             f"• Порог цены: ±{settings.PRICE_CHANGE_THRESHOLD}%\n"
             f"• Порог объёма: +{settings.VOLUME_CHANGE_THRESHOLD}%\n"
@@ -127,9 +144,7 @@ class SignalBot:
             f"• Интервал сканирования: {settings.SCAN_INTERVAL}с\n"
             f"• Игнорируемых пар: {runtime.get('ignored_count', 0)}\n"
             f"• Ранних сигналов: {stats.get('early_signals_count', 0)}\n"
-            f"• Подтверждённых: {stats.get('confirmed_signals_count', 0)}\n"
-            f"• Binance top pairs: {len(exchange_symbols.get('binance', []))}\n"
-            f"• Bybit top pairs: {len(exchange_symbols.get('bybit', []))}\n\n"
+            f"• Подтверждённых: {stats.get('confirmed_signals_count', 0)}\n\n"
             "API: <code>/api/signals</code>"
         )
         await update.message.reply_text(status_text, parse_mode=ParseMode.HTML)
